@@ -1,6 +1,6 @@
 # DVC
 /data/documents
-*.dvc
+!.dvc
 
 # Python
 __pycache__/
