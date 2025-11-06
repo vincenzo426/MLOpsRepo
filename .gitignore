@@ -1,0 +1,17 @@
+# DVC
+/data/documents
+*.dvc
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+
+# Kubeflow
+document_pipeline.yaml
+
+# Env
+.env
+myvenv/
