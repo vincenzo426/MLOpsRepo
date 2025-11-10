@@ -3,20 +3,17 @@ name: Kubeflow Document Pipeline
 on:
   push:
     paths:
-      - 'data/documents/**'
+      - 'data/documents.dvc'
     branches:
       - main
 
 jobs:
-  process-documents:
+  trigger-pipeline:
     runs-on: self-hosted
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -32,35 +29,11 @@ jobs:
           dvc remote modify myminio access_key_id ${{ secrets.MINIO_ACCESS_KEY }}
           dvc remote modify myminio secret_access_key ${{ secrets.MINIO_SECRET_KEY }}
 
-      - name: Track documents with DVC
+      - name: Verify data on MinIO
         run: |
-          dvc add data/documents
-          
-      - name: Check for DVC changes
-        id: dvc_check
-        run: |
-          if git diff --exit-code data/documents.dvc; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit DVC changes
-        if: steps.dvc_check.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/documents.dvc data/.gitignore
-          git commit -m "Update DVC tracking [skip ci]"
-          git push
-
-      - name: Push data to MinIO
-        if: steps.dvc_check.outputs.changed == 'true'
-        run: |
-          dvc push
+          dvc status
 
       - name: Run Kubeflow Pipeline
-        if: steps.dvc_check.outputs.changed == 'true'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: |
