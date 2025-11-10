@@ -17,3 +17,8 @@ document_pipeline.yaml
 myvenv/
 
 k8s
+
+#CI/CD Hosted runners
+actions-runner
+
+minikube-network.sh
