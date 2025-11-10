@@ -1,3 +1,8 @@
+import kfp
+import os
+import sys
+import subprocess
+
 def run_pipeline():
     try:
         # Verifica connessione Kubeflow API
