@@ -10,7 +10,7 @@ __pycache__/
 *.egg-info/
 
 # Kubeflow
-document_pipeline.yaml
+
 
 # Env
 .env
