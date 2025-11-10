@@ -71,7 +71,6 @@ def chunk_documents(
     
     for root, dirs, files in os.walk(documents.path):
         for file in files:
-            # Skip hidden files e metadata DVC
             if file.startswith('.'):
                 continue
                 
@@ -80,7 +79,6 @@ def chunk_documents(
             print(f"Processing: {file} ({file_size} bytes)")
             
             try:
-                # Prova a leggere come testo (file DVC sono raw text senza estensione)
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                 
@@ -231,7 +229,7 @@ def document_processing_pipeline(
     minio_bucket: str = 'dvc-storage',
     minio_endpoint: str = 'minio-service.kubeflow.svc.cluster.local:9000',
     minio_access_key: str = 'minio',
-    minio_secret_key: str = 'minio123',
+    minio_secret_key: str = '',
     hf_api_key: str = '',
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
@@ -240,7 +238,6 @@ def document_processing_pipeline(
     collection_name: str = 'documents',
     vector_size: int = 384
 ):
-    import os 
     download_task = download_from_minio(
         bucket_name=minio_bucket,
         minio_endpoint=minio_endpoint,
@@ -257,7 +254,7 @@ def document_processing_pipeline(
     embed_task = create_embeddings(
         chunks=chunk_task.outputs['output_chunks'],
         model_name=embedding_model,
-        hf_api_key=os.getenv('HF_API_KEY', hf_api_key)
+        hf_api_key=hf_api_key
     )
     
     upload_task = upload_to_qdrant(
