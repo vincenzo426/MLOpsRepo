@@ -13,7 +13,6 @@ __pycache__/
 document_pipeline.yaml
 
 # Env
-.env
 myvenv/
 
 k8s
