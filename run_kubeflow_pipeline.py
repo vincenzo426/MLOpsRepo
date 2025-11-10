@@ -5,15 +5,6 @@ import subprocess
 
 def run_pipeline():
     try:
-        # Verifica connessione Kubeflow API
-        if not ensure_port_forward():
-            print("\n❌ Impossibile connettersi a Kubeflow Pipelines API")
-            print("   Verifica che:")
-            print("   1. Minikube sia in esecuzione: minikube status")
-            print("   2. Kubeflow sia installato: kubectl get pods -n kubeflow")
-            print("   3. Servizio ml-pipeline esista: kubectl get svc ml-pipeline -n kubeflow")
-            print("   4. Esegui manualmente: ./start_portforward.sh")
-            return 1
         
         # Client Kubeflow - PORTA API CORRETTA
         print("🔗 Connessione a Kubeflow Pipelines API...")
