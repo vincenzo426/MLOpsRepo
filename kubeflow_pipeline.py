@@ -232,7 +232,7 @@ def document_processing_pipeline(
     minio_endpoint: str = 'minio-service.kubeflow.svc.cluster.local:9000',
     minio_access_key: str = 'minio',
     minio_secret_key: str = 'minio123',
-    hf_api_key: str = '',
+    hf_api_key: str = 'default',
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     embedding_model: str = 'sentence-transformers/all-MiniLM-L6-v2',
