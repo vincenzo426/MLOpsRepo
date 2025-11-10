@@ -10,7 +10,8 @@ def run_pipeline():
         print("🔗 Connessione a Kubeflow Pipelines API...")
         client = kfp.Client(
             host='http://localhost:8888',
-            namespace='kubeflow-user-example-com'  # Risolve errore multi-user mode
+            namespace='kubeflow-user-example-com',
+            cookies='authservice_session=local'
         )
         
         # HF API Key da environment
