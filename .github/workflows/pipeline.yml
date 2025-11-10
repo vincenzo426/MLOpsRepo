@@ -4,16 +4,19 @@ on:
   push:
     paths:
       - 'data/documents.dvc'
+      - 'kubeflow_pipeline.py'
     branches:
       - main
 
 jobs:
-  trigger-pipeline:
+  pipeline-workflow:
     runs-on: self-hosted
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -21,20 +24,48 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check modified files
+        id: check_files
         run: |
-          pip install -r requirements.txt
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+          echo "Changed files: $CHANGED_FILES"
+          
+          if echo "$CHANGED_FILES" | grep -q "kubeflow_pipeline.py"; then
+            echo "pipeline_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "pipeline_changed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "data/documents.dvc"; then
+            echo "data_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "data_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compile and Upload Pipeline
+        if: steps.check_files.outputs.pipeline_changed == 'true'
+        env:
+          KUBEFLOW_ENDPOINT: http://localhost:8888
+        run: |
+          python kubeflow_pipeline.py
+          python run_kubeflow_pipeline.py --upload
 
       - name: Configure DVC
+        if: steps.check_files.outputs.data_changed == 'true'
         run: |
           dvc remote modify myminio access_key_id ${{ secrets.MINIO_ACCESS_KEY }}
           dvc remote modify myminio secret_access_key ${{ secrets.MINIO_SECRET_KEY }}
 
       - name: Verify data on MinIO
-        run: |
-          dvc status
+        if: steps.check_files.outputs.data_changed == 'true'
+        run: dvc status
 
       - name: Run Kubeflow Pipeline
+        if: steps.check_files.outputs.data_changed == 'true'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
-        run: |
-          python run_kubeflow_pipeline.py
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          KUBEFLOW_ENDPOINT: http://localhost:8888
+        run: python run_kubeflow_pipeline.py --run
