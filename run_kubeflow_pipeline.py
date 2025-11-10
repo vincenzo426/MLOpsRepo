@@ -5,10 +5,13 @@ import subprocess
 
 def run_pipeline():
     try:
-        
+
         # Client Kubeflow - PORTA API CORRETTA
         print("🔗 Connessione a Kubeflow Pipelines API...")
-        client = kfp.Client(host='http://localhost:8888')
+        client = kfp.Client(
+            host='http://localhost:8888',
+            namespace='kubeflow'  # Risolve errore multi-user mode
+        )
         
         # HF API Key da environment
         hf_api_key = os.getenv('HF_API_KEY', 'default')
