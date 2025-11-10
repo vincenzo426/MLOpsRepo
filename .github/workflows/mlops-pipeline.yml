@@ -1,0 +1,137 @@
+name: MLOps Pipeline CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'data/documents/**'
+      - 'kubeflow_pipeline.py'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  mlops-pipeline:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Necessario per DVC
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8
+    
+    - name: Lint Python code
+      run: |
+        flake8 kubeflow_pipeline.py --max-line-length=120 --ignore=E501,W503
+    
+    - name: Configure DVC
+      run: |
+        dvc remote modify myminio access_key_id ${{ secrets.MINIO_ACCESS_KEY }}
+        dvc remote modify myminio secret_access_key ${{ secrets.MINIO_SECRET_KEY }}
+    
+    - name: Test MinIO connectivity
+      run: |
+        python -c "
+        from minio import Minio
+        client = Minio('localhost:9000', access_key='${{ secrets.MINIO_ACCESS_KEY }}', secret_key='${{ secrets.MINIO_SECRET_KEY }}', secure=False)
+        print('MinIO OK:', client.bucket_exists('dvc-storage'))
+        "
+    
+    - name: Test Qdrant connectivity
+      run: |
+        python -c "
+        from qdrant_client import QdrantClient
+        client = QdrantClient(url='http://localhost:6333')
+        print('Qdrant OK:', client.get_collections())
+        "
+    
+    - name: Test Kubeflow connectivity
+      run: |
+        kubectl get pods -n kubeflow | head -5
+    
+    - name: Check data changes
+      id: check_data
+      run: |
+        if git diff --name-only HEAD~1 HEAD | grep -q 'data/documents'; then
+          echo "data_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "data_changed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: DVC push (if data changed)
+      if: steps.check_data.outputs.data_changed == 'true'
+      run: |
+        dvc add data/documents
+        dvc push
+        echo "✓ Data pushed to MinIO"
+    
+    - name: Compile Kubeflow pipeline
+      run: |
+        python kubeflow_pipeline.py
+        echo "✓ Pipeline compiled"
+    
+    - name: Run Kubeflow pipeline
+      env:
+        HF_API_KEY: ${{ secrets.HF_API_KEY }}
+      run: |
+        python - <<EOF
+        import kfp
+        from kubeflow_pipeline import document_processing_pipeline
+        
+        client = kfp.Client(host='http://localhost:8080')
+        
+        run = client.create_run_from_pipeline_func(
+            document_processing_pipeline,
+            arguments={
+                'minio_bucket': 'dvc-storage',
+                'minio_endpoint': 'minio-service.kubeflow.svc.cluster.local:9000',
+                'minio_access_key': '${{ secrets.MINIO_ACCESS_KEY }}',
+                'minio_secret_key': '${{ secrets.MINIO_SECRET_KEY }}',
+                'hf_api_key': '${{ secrets.HF_API_KEY }}',
+                'chunk_size': 1000,
+                'chunk_overlap': 200,
+                'embedding_model': 'sentence-transformers/all-MiniLM-L6-v2',
+                'qdrant_url': 'http://qdrant:6333',
+                'collection_name': 'documents',
+                'vector_size': 384
+            }
+        )
+        
+        print(f"✓ Pipeline executed: {run.run_id}")
+        print(f"Monitor at: http://localhost:8080/#/runs/details/{run.run_id}")
+        EOF
+    
+    - name: Verify Qdrant indexing
+      run: |
+        python - <<EOF
+        from qdrant_client import QdrantClient
+        
+        client = QdrantClient(url='http://localhost:6333')
+        collection_info = client.get_collection('documents')
+        
+        print(f"✓ Collection 'documents': {collection_info.points_count} points")
+        
+        if collection_info.points_count == 0:
+            raise Exception("No points in Qdrant collection!")
+        EOF
+    
+    - name: Commit DVC changes (if data changed)
+      if: steps.check_data.outputs.data_changed == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add data/documents.dvc .gitignore
+        git commit -m "Update DVC tracked data [skip ci]" || echo "No changes to commit"
+        git push || echo "Nothing to push"
