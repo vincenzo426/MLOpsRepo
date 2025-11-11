@@ -51,7 +51,9 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
     """
     Carica una pipeline. Se esiste, carica una nuova versione.
     Se non esiste, crea la pipeline.
-    Logica aggiornata per controllare se pipeline_id è None o stringa vuota.
+    
+    Restituisce l'oggetto V2beta1PipelineVersion della versione creata 
+    (o la versione di default se la pipeline è nuova).
     """
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     version_name = f"version-{timestamp}"
@@ -61,51 +63,66 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
     # 1. Recupera l'ID della pipeline (restituisce None se non trovata)
     pipeline_id = client.get_pipeline_id(name=pipeline_name)
     
+    # Inizializza la variabile che conterrà l'oggetto versione da restituire
+    pipeline_version_to_return = None
+    
     # 2. Logica di controllo su pipeline_id
     # Scenario: Pipeline NON trovata
     if pipeline_id is None or pipeline_id == "":
         print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
         try:
+            # client.upload_pipeline restituisce un oggetto V2beta1Pipeline
             pipeline = client.upload_pipeline(
                 pipeline_package_path=pipeline_file,
                 pipeline_name=pipeline_name,
                 description=f"Pipeline per processing documenti AgenticRAG"
             )
 
-            # Gestisci diversi tipi di risposta
-            pipeline_id = None
-            if hasattr(pipeline, 'pipeline_id'):
-                pipeline_id = pipeline.pipeline_id
-            elif hasattr(pipeline, 'id'):
-                pipeline_id = pipeline.id
-            elif hasattr(pipeline_upload, 'name'):
-                pipeline_id = pipeline.name
+            # Estrai l'ID della pipeline
+            pipeline_id = pipeline.pipeline_id
             
-            print(f"✅ Pipeline caricata con successo!")
-            if pipeline_id:
-                print(f"   Pipeline ID: {pipeline_id}")
-            print(f"   Nome: {pipeline_name}")
+            # --- MODIFICA CHIAVE ---
+            # Assegna la versione di default al valore di ritorno
+            pipeline_version_to_return = pipeline.default_version.pipeline_version_id
+            
+            print(f"✅ Pipeline creata con successo!")
+            print(f"   Pipeline ID: {pipeline_id}")
+            if pipeline_version_to_return:
+                print(f"   Versione di Default ID: {pipeline_version_to_return}")
+
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
             raise e # Rilancia l'errore se la creazione fallisce
+    
     # Scenario: Pipeline TROVATA
     else:
         print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
         print(f"   Caricamento nuova versione: {version_name}...")
         try:
-            client.upload_pipeline_version(
+            # client.upload_pipeline_version restituisce un oggetto V2beta1PipelineVersion
+            new_version = client.upload_pipeline_version(
                 pipeline_package_path=pipeline_file,
                 pipeline_version_name=version_name,
                 pipeline_id=pipeline_id
             )
+            
+            # --- MODIFICA CHIAVE ---
+            # Assegna la nuova versione al valore di ritorno
+            pipeline_version_to_return = new_version.id
+            
             print(f"✅ Nuova versione '{version_name}' caricata con successo.")
+            if pipeline_version_to_return:
+                print(f"   Nuova Versione ID: {pipeline_version_to_return}")
+
         except Exception as e:
             print(f"❌ Errore durante l'upload della *versione*: {str(e)}")
             raise e # Rilancia l'errore se l'upload della versione fallisce
-    return pipeline_id
+    
+    # Restituisce l'oggetto V2beta1PipelineVersion (o None se qualcosa è fallito)
+    return pipeline_version_to_return
 
 
-def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
+def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id=: str):
     """
     Esegue l'ultima versione della pipeline specificata.
     """
@@ -130,6 +147,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
             experiment_id=experiment_id,
             job_name=run_name, 
             pipeline_id=pipeline_id,
+            version_id=version_id,
             params=arguments
         )
         
@@ -205,10 +223,10 @@ def main():
             if not os.path.exists(PIPELINE_FILE):
                  print(f"❌ ERRORE: {PIPELINE_FILE} non trovato. Esegui 'make compile-pipeline' prima.")
                  sys.exit(1)
-            upload_pipeline_version_function(client, PIPELINE_FILE, PIPELINE_NAME)
+            verision_pipeline = upload_pipeline_version_function(client, PIPELINE_FILE, PIPELINE_NAME)
         
         if args.run:
-            run_pipeline(client, experiment.experiment_id, PIPELINE_NAME)
+            run_pipeline(client, experiment.experiment_id, PIPELINE_NAME, verision_pipeline)
         
         print("\n" + "="*60)
         print("✅ OPERAZIONE COMPLETATA CON SUCCESSO!")
