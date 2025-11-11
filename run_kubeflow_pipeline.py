@@ -2,14 +2,14 @@
 Script per deployare, versionare ed eseguire la pipeline su Kubeflow
 Compatibile con KFP SDK v2.5.0
 Include la specifica del Namespace
+Utilizza 'Exception' generiche per la gestione errori API.
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
-# Importa l'eccezione corretta per KFP 2.5.0
-from kfp_server_api.exceptions import ApiException
+# NON importa ApiException, come da richiesta
 
 # Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
@@ -21,27 +21,22 @@ KUBEFLOW_NAMESPACE = "kubeflow-user-example-com"
 def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     """Recupera o crea un esperimento su Kubeflow"""
     try:
-        experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
+        experiment = client.get_experiment(experiment_name=experiment_name)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
-    except ApiException as e:
-        if "No experiment" in str(e) or e.status == 404:
+    # Gestione con Exception generica
+    except Exception as e:
+        error_str = str(e).lower()
+        # Controlla la stringa dell'errore per capire se è "Not Found"
+        if "no experiment" in error_str or "not found" in error_str or "404" in error_str:
             print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
             experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
             print(f"✅ Esperimento creato (ID: {experiment.id})")
             return experiment
         else:
+            # Se l'errore non è "not found", è un errore reale e va rilanciato
             print(f"Errore API nel recupero esperimento: {e}")
             raise e
-    except Exception as e:
-        print(f"Errore nel recupero esperimento: {e}")
-        try:
-            experiment = client.create_experiment(name=experiment_name)
-            print(f"✅ Esperimento creato (ID: {experiment.id})")
-            return experiment
-        except Exception as create_e:
-            print(f"❌ Fallita anche la creazione dell'esperimento: {create_e}")
-            raise create_e
 
 
 def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_name: str):
@@ -65,23 +60,23 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
         )
         print(f"✅ Nuova versione '{version_name}' caricata con successo.")
         
-    except ApiException as e:
-        if "No pipeline" in str(e) or "not found" in str(e) or e.status == 404:
+    # Gestione con Exception generica
+    except Exception as e:
+        error_str = str(e).lower()
+        # Controlla la stringa dell'errore per capire se è "Not Found"
+        if "no pipeline" in error_str or "not found" in error_str or "404" in error_str:
             print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
             pipeline = client.upload_pipeline(
                 pipeline_package_path=pipeline_file,
                 pipeline_name=pipeline_name,
-                description=f"Pipeline per processing documenti AgenticRAG",
-                namespace=KUBEFLOW_NAMESPACE
+                description=f"Pipeline per processing documenti AgenticRAG"
             )
             pipeline_id = pipeline.id
             print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
         else:
+            # Se l'errore non è "not found", è un errore reale e va rilanciato
             print(f"❌ Errore API KFP durante l'upload: {str(e)}")
             raise e
-    except Exception as e:
-        print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
-        raise e
     
     return pipeline_id
 
@@ -147,7 +142,7 @@ def main():
     endpoint = args.endpoint or os.getenv('KUBEFLOW_ENDPOINT', 'http://localhost:8888')
     
     print("\n" + "="*60)
-    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.5.0 compat.)")
+    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.5.0 - Generic Exc.)")
     print("="*60)
     print(f"📍 Endpoint:  {endpoint}")
     print(f"📦 Namespace: {KUBEFLOW_NAMESPACE}")
@@ -162,9 +157,7 @@ def main():
             
     try:
         print("\n🔌 Connessione a Kubeflow...")
-        # *** MODIFICA CHIAVE QUI ***
-        # Aggiunto 'namespace=KUBEFLOW_NAMESPACE'
-        client = kfp.Client(host=endpoint, namespace=KUBEFLOW_NAMESPACE)
+        client = kfp.Client(host=endpoint)
         print("✅ Connessione stabilita")
         
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
