@@ -1,58 +1,98 @@
 """
-Script per deployare ed eseguire la pipeline su Kubeflow
+Script per deployare, versionare ed eseguire la pipeline su Kubeflow
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
+from kfp.exceptions import KFPException
 
-def upload_pipeline(client, pipeline_file, pipeline_name):
-    """Upload della pipeline su Kubeflow"""
-    print(f"\n📦 Upload pipeline...")
-    print(f"   Nome: {pipeline_name}")
+# Nomi statici per pipeline ed esperimento
+PIPELINE_NAME = "document-processing-pipeline"
+EXPERIMENT_NAME = "RAG Document Processing"
+PIPELINE_FILE = "document_pipeline.yaml"
+
+def get_or_create_experiment(client: kfp.Client, experiment_name: str):
+    """Recupera o crea un esperimento su Kubeflow"""
+    try:
+        experiment = client.get_experiment(experiment_name=experiment_name)
+        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
+        return experiment
+    except KFPException as e:
+        if "No experiment" in str(e):
+            print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
+            experiment = client.create_experiment(name=experiment_name)
+            print(f"✅ Esperimento creato (ID: {experiment.id})")
+            return experiment
+        else:
+            raise e
+    except Exception as e:
+        # Gestisce altri possibili errori di connessione o API
+        print(f"Errore nel recupero esperimento: {e}")
+        # Prova a crearlo come fallback
+        try:
+            experiment = client.create_experiment(name=experiment_name)
+            print(f"✅ Esperimento creato (ID: {experiment.id})")
+            return experiment
+        except Exception as create_e:
+            print(f"❌ Fallita anche la creazione dell'esperimento: {create_e}")
+            raise create_e
+
+
+def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_name: str):
+    """
+    Carica una pipeline. Se esiste, carica una nuova versione.
+    Se non esiste, crea la pipeline.
+    """
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    version_name = f"version-{timestamp}"
     
     try:
-        pipeline_upload = client.upload_pipeline(
+        # 1. Controlla se la pipeline esiste
+        pipeline = client.get_pipeline(pipeline_name=pipeline_name)
+        pipeline_id = pipeline.id
+        print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
+        print(f"   Caricamento nuova versione: {version_name}...")
+        
+        # 2. Se esiste, carica una nuova versione
+        client.upload_pipeline_version(
             pipeline_package_path=pipeline_file,
-            pipeline_name=pipeline_name,
-            description=f"processing-data-for-agenticRAG {datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            pipeline_version_name=version_name,
+            pipeline_id=pipeline_id
         )
+        print(f"✅ Nuova versione '{version_name}' caricata con successo.")
         
-        pipeline_id = None
-        if hasattr(pipeline_upload, 'pipeline_id'):
-            pipeline_id = pipeline_upload.pipeline_id
-        elif hasattr(pipeline_upload, 'id'):
-            pipeline_id = pipeline_upload.id
-        elif hasattr(pipeline_upload, 'name'):
-            pipeline_id = pipeline_upload.name
-        
-        print(f"✅ Pipeline caricata con successo!")
-        if pipeline_id:
-            print(f"   Pipeline ID: {pipeline_id}")
-        
-        return pipeline_id
-        
+    except KFPException as e:
+        if "No pipeline" in str(e) or "not found" in str(e):
+            # 3. Se non esiste, crea una nuova pipeline
+            print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
+            pipeline = client.upload_pipeline(
+                pipeline_package_path=pipeline_file,
+                pipeline_name=pipeline_name,
+                description=f"Pipeline per processing documenti AgenticRAG"
+            )
+            pipeline_id = pipeline.id
+            print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
+        else:
+            print(f"❌ Errore KFP durante l'upload: {str(e)}")
+            raise e
     except Exception as e:
-        print(f"⚠️  Metodo standard fallito: {str(e)}")
-        print(f"   Provo metodo alternativo...")
-        
-        result = client._upload_api.upload_pipeline(
-            uploadfile=pipeline_file,
-            name=pipeline_name,
-            description=f"processing-data-for-agenticRAG - {datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        )
-        print(f"✅ Pipeline caricata con metodo alternativo!")
-        return None
+        print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
+        raise e
+    
+    return pipeline_id
 
 
-def run_pipeline(client, pipeline_file, pipeline_name=None):
-    """Esegui una pipeline run con parametri da environment"""
-    print(f"\n🚀 Esecuzione pipeline...")
+def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
+    """
+    Esegue l'ultima versione della pipeline specificata.
+    """
+    print(f"\n🚀 Avvio run per l'ultima versione di '{pipeline_name}'...")
     
     # Recupera credenziali da environment
     hf_api_key = os.getenv('HF_API_KEY', '')
-    minio_secret_key = os.getenv('MINIO_SECRET_KEY', 'minio123')
+    minio_secret_key = os.getenv('MINIO_SECRET_KEY', '')
     
     if not hf_api_key:
         print("⚠️  HF_API_KEY non trovata nelle environment variables")
@@ -64,13 +104,14 @@ def run_pipeline(client, pipeline_file, pipeline_name=None):
     }
     
     try:
-        run_name = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
-        # Usa create_run_from_pipeline_package per passare parametri
-        run = client.create_run_from_pipeline_package(
-            pipeline_file=pipeline_file,
-            arguments=arguments,
-            run_name=run_name
+        # Esegue la pipeline per NOME (KFP userà l'ultima versione di default)
+        run = client.run_pipeline(
+            experiment_id=experiment_id,
+            run_name=run_name,
+            pipeline_name=pipeline_name,
+            params=arguments
         )
         
         run_id = getattr(run, 'id', None) or getattr(run, 'run_id', None)
@@ -91,9 +132,9 @@ def run_pipeline(client, pipeline_file, pipeline_name=None):
 def main():
     parser = argparse.ArgumentParser(description='Deploy e Run Kubeflow Pipeline')
     parser.add_argument('--upload', action='store_true', 
-                       help='Upload della pipeline su Kubeflow')
+                       help='Upload nuova versione della pipeline')
     parser.add_argument('--run', action='store_true',
-                       help='Esecuzione della pipeline')
+                       help='Esecuzione ultima versione della pipeline')
     parser.add_argument('--endpoint', default=None,
                        help='Endpoint Kubeflow')
     
@@ -105,31 +146,42 @@ def main():
         args.run = True
     
     endpoint = args.endpoint or os.getenv('KUBEFLOW_ENDPOINT', 'http://localhost:8888')
-    pipeline_file = 'document_pipeline.yaml'
     
     print("\n" + "="*60)
-    print("🚀 KUBEFLOW PIPELINE MANAGER")
+    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - Versioning)")
     print("="*60)
-    print(f"📍 Endpoint: {endpoint}")
-    print(f"📄 Pipeline: {pipeline_file}")
+    print(f"📍 Endpoint:  {endpoint}")
+    print(f"📄 Pipeline:  {PIPELINE_FILE}")
+    print(f"🏷️  Nome Pipe: {PIPELINE_NAME}")
+    print(f"🧪 Esperim.:  {EXPERIMENT_NAME}")
     
-    if not os.path.exists(pipeline_file):
-        print(f"❌ ERRORE: File {pipeline_file} non trovato!")
-        sys.exit(1)
-    
+    if (args.upload or args.run) and not os.path.exists(PIPELINE_FILE):
+        print(f"❌ ERRORE: File {PIPELINE_FILE} non trovato!")
+        print("   (Necessario per --upload o --run se la pipeline non è mai stata caricata)")
+        if not args.upload:
+             print("   (Tentativo di --run senza --upload su una pipeline forse inesistente)")
+        # Non esce se è solo --run, potrebbe esistere già
+        if args.upload:
+            sys.exit(1)
+            
     try:
         print("\n🔌 Connessione a Kubeflow...")
         client = kfp.Client(host=endpoint)
         print("✅ Connessione stabilita")
         
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        pipeline_name = f"processing-data-for-agenticRAG-{timestamp}"
+        # 1. Recupera o crea l'esperimento
+        experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
         
+        # 2. Se richiesto, compila e carica la versione
         if args.upload:
-            upload_pipeline(client, pipeline_file, pipeline_name)
+            if not os.path.exists(PIPELINE_FILE):
+                 print(f"❌ ERRORE: {PIPELINE_FILE} non trovato. Esegui 'make compile-pipeline' prima.")
+                 sys.exit(1)
+            upload_pipeline_version(client, PIPELINE_FILE, PIPELINE_NAME)
         
+        # 3. Se richiesto, esegui l'ultima versione
         if args.run:
-            run_pipeline(client, pipeline_file, pipeline_name)
+            run_pipeline(client, experiment.id, PIPELINE_NAME)
         
         print("\n" + "="*60)
         print("✅ OPERAZIONE COMPLETATA CON SUCCESSO!")
@@ -140,12 +192,9 @@ def main():
         
     except Exception as e:
         print(f"\n❌ ERRORE: {str(e)}")
-        print(f"🔍 Tipo errore: {type(e).__name__}")
-        
         import traceback
         print(f"\n📋 Stack trace:")
         traceback.print_exc()
-        
         print("\n" + "="*60)
         return 1
 
