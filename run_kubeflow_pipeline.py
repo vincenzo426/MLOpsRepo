@@ -1,12 +1,14 @@
 """
 Script per deployare, versionare ed eseguire la pipeline su Kubeflow
+Compatibile con KFP SDK v2.5.0
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
-from kfp.exceptions import KFPException
+# Importa l'eccezione corretta per KFP 2.5.0
+from kfp_server_api.exceptions import ApiException
 
 # Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
@@ -19,18 +21,19 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
         experiment = client.get_experiment(experiment_name=experiment_name)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
-    except KFPException as e:
-        if "No experiment" in str(e):
+    # Usa ApiException per KFP 2.5.0
+    except ApiException as e:
+        if "No experiment" in str(e) or e.status == 404:
             print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
             experiment = client.create_experiment(name=experiment_name)
             print(f"✅ Esperimento creato (ID: {experiment.id})")
             return experiment
         else:
+            print(f"Errore API nel recupero esperimento: {e}")
             raise e
     except Exception as e:
         # Gestisce altri possibili errori di connessione o API
         print(f"Errore nel recupero esperimento: {e}")
-        # Prova a crearlo come fallback
         try:
             experiment = client.create_experiment(name=experiment_name)
             print(f"✅ Esperimento creato (ID: {experiment.id})")
@@ -63,8 +66,9 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
         )
         print(f"✅ Nuova versione '{version_name}' caricata con successo.")
         
-    except KFPException as e:
-        if "No pipeline" in str(e) or "not found" in str(e):
+    # Usa ApiException per KFP 2.5.0
+    except ApiException as e:
+        if "No pipeline" in str(e) or "not found" in str(e) or e.status == 404:
             # 3. Se non esiste, crea una nuova pipeline
             print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
             pipeline = client.upload_pipeline(
@@ -75,7 +79,7 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
             pipeline_id = pipeline.id
             print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
         else:
-            print(f"❌ Errore KFP durante l'upload: {str(e)}")
+            print(f"❌ Errore API KFP durante l'upload: {str(e)}")
             raise e
     except Exception as e:
         print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
@@ -90,14 +94,12 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
     """
     print(f"\n🚀 Avvio run per l'ultima versione di '{pipeline_name}'...")
     
-    # Recupera credenziali da environment
     hf_api_key = os.getenv('HF_API_KEY', '')
-    minio_secret_key = os.getenv('MINIO_SECRET_KEY', '')
+    minio_secret_key = os.getenv('MINIO_SECRET_KEY', 'minio123')
     
     if not hf_api_key:
         print("⚠️  HF_API_KEY non trovata nelle environment variables")
     
-    # Parametri per la pipeline
     arguments = {
         'hf_api_key': hf_api_key,
         'minio_secret_key': minio_secret_key,
@@ -106,11 +108,15 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
     try:
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
-        # Esegue la pipeline per NOME (KFP userà l'ultima versione di default)
+        # Cerca l'ID della pipeline dal nome
+        pipeline_id = client.get_pipeline(pipeline_name=pipeline_name).id
+        
+        # Per KFP 2.5.0, client.run_pipeline potrebbe non supportare pipeline_name
+        # È più sicuro usare pipeline_id e experiment_id
         run = client.run_pipeline(
             experiment_id=experiment_id,
-            run_name=run_name,
-            pipeline_name=pipeline_name,
+            job_name=run_name, # KFP 2.5.0 usa 'job_name' per il nome della run
+            pipeline_id=pipeline_id,
             params=arguments
         )
         
@@ -140,7 +146,6 @@ def main():
     
     args = parser.parse_args()
     
-    # Se non specificato nessun flag, esegui entrambi
     if not args.upload and not args.run:
         args.upload = True
         args.run = True
@@ -148,7 +153,7 @@ def main():
     endpoint = args.endpoint or os.getenv('KUBEFLOW_ENDPOINT', 'http://localhost:8888')
     
     print("\n" + "="*60)
-    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - Versioning)")
+    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.5.0 compat.)")
     print("="*60)
     print(f"📍 Endpoint:  {endpoint}")
     print(f"📄 Pipeline:  {PIPELINE_FILE}")
@@ -157,10 +162,6 @@ def main():
     
     if (args.upload or args.run) and not os.path.exists(PIPELINE_FILE):
         print(f"❌ ERRORE: File {PIPELINE_FILE} non trovato!")
-        print("   (Necessario per --upload o --run se la pipeline non è mai stata caricata)")
-        if not args.upload:
-             print("   (Tentativo di --run senza --upload su una pipeline forse inesistente)")
-        # Non esce se è solo --run, potrebbe esistere già
         if args.upload:
             sys.exit(1)
             
@@ -169,17 +170,14 @@ def main():
         client = kfp.Client(host=endpoint)
         print("✅ Connessione stabilita")
         
-        # 1. Recupera o crea l'esperimento
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
         
-        # 2. Se richiesto, compila e carica la versione
         if args.upload:
             if not os.path.exists(PIPELINE_FILE):
                  print(f"❌ ERRORE: {PIPELINE_FILE} non trovato. Esegui 'make compile-pipeline' prima.")
                  sys.exit(1)
             upload_pipeline_version(client, PIPELINE_FILE, PIPELINE_NAME)
         
-        # 3. Se richiesto, esegui l'ultima versione
         if args.run:
             run_pipeline(client, experiment.id, PIPELINE_NAME)
         
