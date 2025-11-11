@@ -21,7 +21,7 @@ KUBEFLOW_NAMESPACE = "kubeflow-user-example-com"
 def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     """Recupera o crea un esperimento su Kubeflow"""
     try:
-        experiment = client.get_experiment(experiment_name=experiment_name)
+        experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
     # Gestione con Exception generica
