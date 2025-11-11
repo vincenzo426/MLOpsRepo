@@ -32,11 +32,17 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
 
     # 2. Logica di controllo sull'ID
     # Scenario: Esperimento NON trovato
-    if experiment is None or experiment.id == "":
+    experiment_id = None
+    if hasattr(experiment, 'experiment_id'):
+        experiment_id = experiment_id.experiment_id
+    elif hasattr(pipeline, 'id'):
+        experiment_id = experiment_id.id
+
+    if experiment is None or experiment_id == "":
         print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
         try:
             experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
-            print(f"✅ Esperimento creato (ID: {experiment.id})")
+            print(f"✅ Esperimento creato (ID: {experiment_id})")
             return experiment
         except Exception as e:
             print(f"❌ Errore durante la *creazione* dell'esperimento: {str(e)}")
@@ -44,7 +50,7 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     
     # Scenario: Esperimento TROVATO
     else:
-        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id}).")
+        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment_id}).")
         # Ora recuperiamo l'oggetto esperimento completo usando l'ID
         return experiment
 
@@ -182,7 +188,7 @@ def main():
             sys.exit(1)
             
     try:
-        
+
         print("\n🔌 Connessione a Kubeflow...")
         
         # *** LOGICA DI AUTENTICAZIONE (DEFINITIVA) ***
