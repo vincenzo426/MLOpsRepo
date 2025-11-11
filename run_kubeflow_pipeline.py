@@ -43,29 +43,21 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
     """
     Carica una pipeline. Se esiste, carica una nuova versione.
     Se non esiste, crea la pipeline.
+    Logica aggiornata per controllare se pipeline_id è None o stringa vuota.
     """
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     version_name = f"version-{timestamp}"
     
-    try:
-        pipeline_id = client.get_pipeline_id(name=pipeline_name)
-        pipeline = client.get_pipeline(pipeline_id=pipeline_id)
-        print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
-        print(f"   Caricamento nuova versione: {version_name}...")
-        
-        client.upload_pipeline_version(
-            pipeline_package_path=pipeline_file,
-            pipeline_version_name=version_name,
-            pipeline_id=pipeline_id
-        )
-        print(f"✅ Nuova versione '{version_name}' caricata con successo.")
-        
-    # Gestione con Exception generica
-    except Exception as e:
-        error_str = str(e).lower()
-        # Controlla la stringa dell'errore per capire se è "Not Found"
-        if "no pipeline" in error_str or "not found" in error_str or "404" in error_str:
-            print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
+    print(f"Verifica esistenza pipeline '{pipeline_name}'...")
+    
+    # 1. Recupera l'ID della pipeline (restituisce None se non trovata)
+    pipeline_id = client.get_pipeline_id(name=pipeline_name)
+    
+    # 2. Logica di controllo su pipeline_id
+    # Scenario: Pipeline NON trovata
+    if pipeline_id is None or pipeline_id == "":
+        print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
+        try:
             pipeline = client.upload_pipeline(
                 pipeline_package_path=pipeline_file,
                 pipeline_name=pipeline_name,
@@ -73,10 +65,24 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
             )
             pipeline_id = pipeline.id
             print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
-        else:
-            # Se l'errore non è "not found", è un errore reale e va rilanciato
-            print(f"❌ Errore API KFP durante l'upload: {str(e)}")
-            raise e
+        except Exception as e:
+            print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
+            raise e # Rilancia l'errore se la creazione fallisce
+    
+    # Scenario: Pipeline TROVATA
+    else:
+        print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
+        print(f"   Caricamento nuova versione: {version_name}...")
+        try:
+            client.upload_pipeline_version(
+                pipeline_package_path=pipeline_file,
+                pipeline_version_name=version_name,
+                pipeline_id=pipeline_id
+            )
+            print(f"✅ Nuova versione '{version_name}' caricata con successo.")
+        except Exception as e:
+            print(f"❌ Errore durante l'upload della *versione*: {str(e)}")
+            raise e # Rilancia l'errore se l'upload della versione fallisce
     
     return pipeline_id
 
