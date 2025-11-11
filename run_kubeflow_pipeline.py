@@ -182,8 +182,23 @@ def main():
             sys.exit(1)
             
     try:
+        
         print("\n🔌 Connessione a Kubeflow...")
-        client = kfp.Client(host=endpoint)
+        
+        # *** LOGICA DI AUTENTICAZIONE (DEFINITIVA) ***
+        token = os.getenv('KUBEFLOW_PIPELINE_TOKEN')
+        
+        if token:
+            print("   (Autenticazione con Service Account Token trovata)")
+        else:
+            print("   (Nessun Token di autenticazione, tentativo di connessione anonima)")
+            
+        client = kfp.Client(
+            host=endpoint, 
+            namespace=KUBEFLOW_NAMESPACE,
+            # Usa 'existing_token' per i token Bearer
+            existing_token=token 
+        )
         print("✅ Connessione stabilita")
         
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
