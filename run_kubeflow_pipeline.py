@@ -1,14 +1,14 @@
 """
 Script per deployare, versionare ed eseguire la pipeline su Kubeflow
-Compatibile con KFP SDK v2.5.0
+Compatibile con KFP SDK v2.14.6
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
-# Importa l'eccezione corretta per KFP 2.5.0
-from kfp_server_api.exceptions import ApiException
+# Importa l'eccezione corretta per KFP 2.14.6
+from kfp.exceptions import KFPException
 
 # Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
@@ -21,15 +21,14 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
         experiment = client.get_experiment(experiment_name=experiment_name)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
-    # Usa ApiException per KFP 2.5.0
-    except ApiException as e:
-        if "No experiment" in str(e) or e.status == 404:
+    # Usa KFPException per KFP 2.14.6
+    except KFPException as e:
+        if "No experiment" in str(e):
             print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
             experiment = client.create_experiment(name=experiment_name)
             print(f"✅ Esperimento creato (ID: {experiment.id})")
             return experiment
         else:
-            print(f"Errore API nel recupero esperimento: {e}")
             raise e
     except Exception as e:
         # Gestisce altri possibili errori di connessione o API
@@ -66,9 +65,9 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
         )
         print(f"✅ Nuova versione '{version_name}' caricata con successo.")
         
-    # Usa ApiException per KFP 2.5.0
-    except ApiException as e:
-        if "No pipeline" in str(e) or "not found" in str(e) or e.status == 404:
+    # Usa KFPException per KFP 2.14.6
+    except KFPException as e:
+        if "No pipeline" in str(e) or "not found" in str(e):
             # 3. Se non esiste, crea una nuova pipeline
             print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
             pipeline = client.upload_pipeline(
@@ -79,7 +78,7 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
             pipeline_id = pipeline.id
             print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
         else:
-            print(f"❌ Errore API KFP durante l'upload: {str(e)}")
+            print(f"❌ Errore KFP durante l'upload: {str(e)}")
             raise e
     except Exception as e:
         print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
@@ -108,15 +107,11 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
     try:
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
-        # Cerca l'ID della pipeline dal nome
-        pipeline_id = client.get_pipeline(pipeline_name=pipeline_name).id
-        
-        # Per KFP 2.5.0, client.run_pipeline potrebbe non supportare pipeline_name
-        # È più sicuro usare pipeline_id e experiment_id
+        # KFP 2.14.6 supporta 'run_name' e 'pipeline_name'
         run = client.run_pipeline(
             experiment_id=experiment_id,
-            job_name=run_name, # KFP 2.5.0 usa 'job_name' per il nome della run
-            pipeline_id=pipeline_id,
+            run_name=run_name,
+            pipeline_name=pipeline_name,
             params=arguments
         )
         
@@ -133,7 +128,6 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
         import traceback
         traceback.print_exc()
         return None
-
 
 def main():
     parser = argparse.ArgumentParser(description='Deploy e Run Kubeflow Pipeline')
@@ -153,7 +147,7 @@ def main():
     endpoint = args.endpoint or os.getenv('KUBEFLOW_ENDPOINT', 'http://localhost:8888')
     
     print("\n" + "="*60)
-    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.5.0 compat.)")
+    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.14.6)")
     print("="*60)
     print(f"📍 Endpoint:  {endpoint}")
     print(f"📄 Pipeline:  {PIPELINE_FILE}")
