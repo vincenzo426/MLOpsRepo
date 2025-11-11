@@ -48,17 +48,14 @@ jobs:
       # Azione: Compila solamente.
       - name: Compile Pipeline (Code Change Only)
         if: steps.check_files.outputs.pipeline_changed == 'true' && steps.check_files.outputs.data_changed == 'false'
-        env:
-          KUBEFLOW_ENDPOINT: http://localhost:8888
         run: |
           echo "Rilevata modifica solo in 'kubeflow_pipeline.py'."
           echo "Azione: Compilazione in corso..."
           python kubeflow_pipeline.py
           echo "Compilazione completata. Il file 'document_pipeline.yaml' è aggiornato."
 
-      # Configura DVC (serve per scenari 2 e 3, sebbene per il 3 non sia strettamente usato)
+      # Configura DVC (serve per scenari 2 e 3)
       - name: Configure DVC
-        # Esegui se i dati cambiano (Scenario 2 o 3)
         if: steps.check_files.outputs.data_changed == 'true'
         run: |
           echo "Configurazione DVC in corso..."
@@ -74,6 +71,8 @@ jobs:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           KUBEFLOW_ENDPOINT: http://localhost:8888
+          # AGGIUNTO: Passa il token di autenticazione
+          KUBEFLOW_PIPELINE_TOKEN: ${{ secrets.KUBEFLOW_PIPELINE_TOKEN }}
         run: |
           echo "Rilevata modifica solo in 'data/documents.dvc'."
           echo "Azione: Upload e Run dell'ultima versione compilata..."
@@ -87,6 +86,8 @@ jobs:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           KUBEFLOW_ENDPOINT: http://localhost:8888
+          # AGGIUNTO: Passa il token di autenticazione
+          KUBEFLOW_PIPELINE_TOKEN: ${{ secrets.KUBEFLOW_PIPELINE_TOKEN }}
         run: |
           echo "Rilevate modifiche sia in codice che in dati."
           echo "Azione: Compilazione in corso..."
