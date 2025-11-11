@@ -28,7 +28,7 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     
     # 1. Recupera l'ID dell'esperimento (restituisce None se non trovato)
     # Passiamo il namespace come richiesto
-    experiment = client.get_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
+    experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
 
     # 2. Logica di controllo sull'ID
     # Scenario: Esperimento NON trovato
