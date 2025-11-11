@@ -183,7 +183,7 @@ def main():
             
     try:
         print("\n🔌 Connessione a Kubeflow...")
-        client = kfp.Client(host=endpoint, cookies="MTc2Mjg1MjQ5MXxOd3dBTkV0RlZGbFpOMGxPU1ZSUE1qTTJVVXBJVmpNeVdGaEZTbGhCUTBkRFRGcFdSak5GTWpkTU4wNDJOVmN5VlUxUVNFWkxRVUU9fHBfZeCmSpjldv-ik0EprQ99Zro50QFLmmMVtw06d7Th")
+        client = kfp.Client(host=endpoint)
         print("✅ Connessione stabilita")
         
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
