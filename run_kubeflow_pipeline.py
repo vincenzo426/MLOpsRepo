@@ -208,7 +208,7 @@ def main():
             upload_pipeline_version_function(client, PIPELINE_FILE, PIPELINE_NAME)
         
         if args.run:
-            run_pipeline(client, experiment.id, PIPELINE_NAME)
+            run_pipeline(client, experiment.experiment_id, PIPELINE_NAME)
         
         print("\n" + "="*60)
         print("✅ OPERAZIONE COMPLETATA CON SUCCESSO!")
