@@ -63,8 +63,20 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
                 pipeline_name=pipeline_name,
                 description=f"Pipeline per processing documenti AgenticRAG"
             )
-            pipeline_id = pipeline.id
-            print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
+
+            # Gestisci diversi tipi di risposta
+            pipeline_id = None
+            if hasattr(pipeline, 'pipeline_id'):
+                pipeline_id = pipeline.pipeline_id
+            elif hasattr(pipeline, 'id'):
+                pipeline_id = pipeline.id
+            elif hasattr(pipeline_upload, 'name'):
+                pipeline_id = pipeline.name
+            
+            print(f"✅ Pipeline caricata con successo!")
+            if pipeline_id:
+                print(f"   Pipeline ID: {pipeline_id}")
+            print(f"   Nome: {pipeline_name}")
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
             raise e # Rilancia l'errore se la creazione fallisce
@@ -106,7 +118,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
     
     try:
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        pipeline_id = client.get_pipeline(pipeline_name=pipeline_name).id
+        pipeline_id = client.get_pipeline_id(name=pipeline_name)
         
         run = client.run_pipeline(
             experiment_id=experiment_id,
