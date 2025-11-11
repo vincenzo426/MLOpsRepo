@@ -21,7 +21,7 @@ KUBEFLOW_NAMESPACE = "kubeflow-user-example-com"
 def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     """Recupera o crea un esperimento su Kubeflow"""
     try:
-        experiment = client.get_experiment(experiment_name=experiment_name)
+        experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
     except ApiException as e:
@@ -71,7 +71,8 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
             pipeline = client.upload_pipeline(
                 pipeline_package_path=pipeline_file,
                 pipeline_name=pipeline_name,
-                description=f"Pipeline per processing documenti AgenticRAG"
+                description=f"Pipeline per processing documenti AgenticRAG",
+                namespace=KUBEFLOW_NAMESPACE
             )
             pipeline_id = pipeline.id
             print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
