@@ -48,8 +48,8 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
     version_name = f"version-{timestamp}"
     
     try:
-        pipeline = client.get_pipeline(pipeline_name=pipeline_name)
-        pipeline_id = pipeline.id
+        pipeline_id = client.get_pipeline_id(pipeline_name=pipeline_name)
+        pipeline = client.get_pipeline(pipeline_id=pipeline_id)
         print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
         print(f"   Caricamento nuova versione: {version_name}...")
         
