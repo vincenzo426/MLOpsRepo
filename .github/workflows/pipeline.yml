@@ -44,28 +44,53 @@ jobs:
             echo "data_changed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Compile and Upload Pipeline
-        if: steps.check_files.outputs.pipeline_changed == 'true'
+      # SCENARIO 1: Cambia solo il codice.
+      # Azione: Compila solamente.
+      - name: Compile Pipeline (Code Change Only)
+        if: steps.check_files.outputs.pipeline_changed == 'true' && steps.check_files.outputs.data_changed == 'false'
         env:
           KUBEFLOW_ENDPOINT: http://localhost:8888
         run: |
+          echo "Rilevata modifica solo in 'kubeflow_pipeline.py'."
+          echo "Azione: Compilazione in corso..."
           python kubeflow_pipeline.py
-          python run_kubeflow_pipeline.py --upload
+          echo "Compilazione completata. Il file 'document_pipeline.yaml' è aggiornato."
 
+      # Configura DVC (serve per scenari 2 e 3, sebbene per il 3 non sia strettamente usato)
       - name: Configure DVC
+        # Esegui se i dati cambiano (Scenario 2 o 3)
         if: steps.check_files.outputs.data_changed == 'true'
         run: |
+          echo "Configurazione DVC in corso..."
           dvc remote modify myminio access_key_id ${{ secrets.MINIO_ACCESS_KEY }}
           dvc remote modify myminio secret_access_key ${{ secrets.MINIO_SECRET_KEY }}
+          dvc status
 
-      - name: Verify data on MinIO
-        if: steps.check_files.outputs.data_changed == 'true'
-        run: dvc status
-
-      - name: Run Kubeflow Pipeline
-        if: steps.check_files.outputs.data_changed == 'true'
+      # SCENARIO 2: Cambiano solo i dati.
+      # Azione: Carica l'ultima versione compilata (dal repo) ed eseguila.
+      - name: Upload and Run Pipeline (Data Change Only)
+        if: steps.check_files.outputs.pipeline_changed == 'false' && steps.check_files.outputs.data_changed == 'true'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           KUBEFLOW_ENDPOINT: http://localhost:8888
-        run: python run_kubeflow_pipeline.py --run
+        run: |
+          echo "Rilevata modifica solo in 'data/documents.dvc'."
+          echo "Azione: Upload e Run dell'ultima versione compilata..."
+          python run_kubeflow_pipeline.py --upload --run
+
+      # SCENARIO 3: Cambiano sia codice che dati.
+      # Azione: Compila, Carica la nuova versione ed Eseguila.
+      - name: Compile, Upload and Run Pipeline (Code and Data Change)
+        if: steps.check_files.outputs.pipeline_changed == 'true' && steps.check_files.outputs.data_changed == 'true'
+        env:
+          HF_API_KEY: ${{ secrets.HF_API_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          KUBEFLOW_ENDPOINT: http://localhost:8888
+        run: |
+          echo "Rilevate modifiche sia in codice che in dati."
+          echo "Azione: Compilazione in corso..."
+          python kubeflow_pipeline.py
+          
+          echo "Azione: Upload e Run della versione appena compilata..."
+          python run_kubeflow_pipeline.py --upload --run
