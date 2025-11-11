@@ -160,7 +160,7 @@ def main():
         client = kfp.Client(host=endpoint)
         print("✅ Connessione stabilita")
         
-        experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
+        #experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
         
         if args.upload:
             if not os.path.exists(PIPELINE_FILE):
