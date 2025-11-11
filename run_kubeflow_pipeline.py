@@ -8,7 +8,7 @@ import argparse
 from datetime import datetime
 import kfp
 # Importa l'eccezione corretta per KFP 2.14.6
-from kfp.exceptions import KFPException
+#from kfp.exceptions import KFPException
 
 # Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
@@ -21,15 +21,6 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
         experiment = client.get_experiment(experiment_name=experiment_name)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
-    # Usa KFPException per KFP 2.14.6
-    except KFPException as e:
-        if "No experiment" in str(e):
-            print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
-            experiment = client.create_experiment(name=experiment_name)
-            print(f"✅ Esperimento creato (ID: {experiment.id})")
-            return experiment
-        else:
-            raise e
     except Exception as e:
         # Gestisce altri possibili errori di connessione o API
         print(f"Errore nel recupero esperimento: {e}")
@@ -64,22 +55,6 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
             pipeline_id=pipeline_id
         )
         print(f"✅ Nuova versione '{version_name}' caricata con successo.")
-        
-    # Usa KFPException per KFP 2.14.6
-    except KFPException as e:
-        if "No pipeline" in str(e) or "not found" in str(e):
-            # 3. Se non esiste, crea una nuova pipeline
-            print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
-            pipeline = client.upload_pipeline(
-                pipeline_package_path=pipeline_file,
-                pipeline_name=pipeline_name,
-                description=f"Pipeline per processing documenti AgenticRAG"
-            )
-            pipeline_id = pipeline.id
-            print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
-        else:
-            print(f"❌ Errore KFP durante l'upload: {str(e)}")
-            raise e
     except Exception as e:
         print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
         raise e
