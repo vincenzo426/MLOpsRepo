@@ -122,7 +122,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
     return pipeline_version_to_return
 
 
-def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id=: str):
+def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id: str):
     """
     Esegue l'ultima versione della pipeline specificata.
     """
