@@ -30,19 +30,11 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     # Passiamo il namespace come richiesto
     experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
 
-    # 2. Logica di controllo sull'ID
-    # Scenario: Esperimento NON trovato
-    experiment_id = None
-    if hasattr(experiment, 'experiment_id'):
-        experiment_id = experiment_id.experiment_id
-    elif hasattr(pipeline, 'id'):
-        experiment_id = experiment_id.id
-
-    if experiment is None or experiment_id == "":
+    if experiment is None or experiment.experiment_id == "":
         print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
         try:
             experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
-            print(f"✅ Esperimento creato (ID: {experiment_id})")
+            print(f"✅ Esperimento creato (ID: {experiment.experiment_id})")
             return experiment
         except Exception as e:
             print(f"❌ Errore durante la *creazione* dell'esperimento: {str(e)}")
@@ -50,7 +42,7 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     
     # Scenario: Esperimento TROVATO
     else:
-        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment_id}).")
+        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.experiment_id}).")
         # Ora recuperiamo l'oggetto esperimento completo usando l'ID
         return experiment
 
