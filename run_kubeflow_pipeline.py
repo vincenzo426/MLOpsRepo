@@ -1,19 +1,22 @@
 """
 Script per deployare, versionare ed eseguire la pipeline su Kubeflow
-Compatibile con KFP SDK v2.14.6
+Compatibile con KFP SDK v2.5.0
+Include la specifica del Namespace
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
-# Importa l'eccezione corretta per KFP 2.14.6
-#from kfp.exceptions import KFPException
+# Importa l'eccezione corretta per KFP 2.5.0
+from kfp_server_api.exceptions import ApiException
 
 # Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
 EXPERIMENT_NAME = "RAG Document Processing"
 PIPELINE_FILE = "document_pipeline.yaml"
+# Namespace Kubeflow (richiesto da KFP 2.5.0)
+KUBEFLOW_NAMESPACE = "kubeflow-user-example-com" 
 
 def get_or_create_experiment(client: kfp.Client, experiment_name: str):
     """Recupera o crea un esperimento su Kubeflow"""
@@ -21,8 +24,16 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
         experiment = client.get_experiment(experiment_name=experiment_name)
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
         return experiment
+    except ApiException as e:
+        if "No experiment" in str(e) or e.status == 404:
+            print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
+            experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
+            print(f"✅ Esperimento creato (ID: {experiment.id})")
+            return experiment
+        else:
+            print(f"Errore API nel recupero esperimento: {e}")
+            raise e
     except Exception as e:
-        # Gestisce altri possibili errori di connessione o API
         print(f"Errore nel recupero esperimento: {e}")
         try:
             experiment = client.create_experiment(name=experiment_name)
@@ -42,19 +53,31 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
     version_name = f"version-{timestamp}"
     
     try:
-        # 1. Controlla se la pipeline esiste
         pipeline = client.get_pipeline(pipeline_name=pipeline_name)
         pipeline_id = pipeline.id
         print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
         print(f"   Caricamento nuova versione: {version_name}...")
         
-        # 2. Se esiste, carica una nuova versione
         client.upload_pipeline_version(
             pipeline_package_path=pipeline_file,
             pipeline_version_name=version_name,
             pipeline_id=pipeline_id
         )
         print(f"✅ Nuova versione '{version_name}' caricata con successo.")
+        
+    except ApiException as e:
+        if "No pipeline" in str(e) or "not found" in str(e) or e.status == 404:
+            print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
+            pipeline = client.upload_pipeline(
+                pipeline_package_path=pipeline_file,
+                pipeline_name=pipeline_name,
+                description=f"Pipeline per processing documenti AgenticRAG"
+            )
+            pipeline_id = pipeline.id
+            print(f"✅ Pipeline creata con successo (ID: {pipeline_id}).")
+        else:
+            print(f"❌ Errore API KFP durante l'upload: {str(e)}")
+            raise e
     except Exception as e:
         print(f"❌ Errore imprevisto durante l'upload: {str(e)}")
         raise e
@@ -81,12 +104,12 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
     
     try:
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        pipeline_id = client.get_pipeline(pipeline_name=pipeline_name).id
         
-        # KFP 2.14.6 supporta 'run_name' e 'pipeline_name'
         run = client.run_pipeline(
             experiment_id=experiment_id,
-            run_name=run_name,
-            pipeline_name=pipeline_name,
+            job_name=run_name, 
+            pipeline_id=pipeline_id,
             params=arguments
         )
         
@@ -103,6 +126,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str):
         import traceback
         traceback.print_exc()
         return None
+
 
 def main():
     parser = argparse.ArgumentParser(description='Deploy e Run Kubeflow Pipeline')
@@ -122,9 +146,10 @@ def main():
     endpoint = args.endpoint or os.getenv('KUBEFLOW_ENDPOINT', 'http://localhost:8888')
     
     print("\n" + "="*60)
-    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.14.6)")
+    print("🚀 KUBEFLOW PIPELINE MANAGER (v2.0 - KFP 2.5.0 compat.)")
     print("="*60)
     print(f"📍 Endpoint:  {endpoint}")
+    print(f"📦 Namespace: {KUBEFLOW_NAMESPACE}")
     print(f"📄 Pipeline:  {PIPELINE_FILE}")
     print(f"🏷️  Nome Pipe: {PIPELINE_NAME}")
     print(f"🧪 Esperim.:  {EXPERIMENT_NAME}")
@@ -136,7 +161,9 @@ def main():
             
     try:
         print("\n🔌 Connessione a Kubeflow...")
-        client = kfp.Client(host=endpoint)
+        # *** MODIFICA CHIAVE QUI ***
+        # Aggiunto 'namespace=KUBEFLOW_NAMESPACE'
+        client = kfp.Client(host=endpoint, namespace=KUBEFLOW_NAMESPACE)
         print("✅ Connessione stabilita")
         
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
