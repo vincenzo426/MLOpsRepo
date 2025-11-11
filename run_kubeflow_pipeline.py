@@ -108,7 +108,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
             
             # --- MODIFICA CHIAVE ---
             # Assegna la nuova versione al valore di ritorno
-            pipeline_version_to_return = new_version.id
+            pipeline_version_to_return = new_version.pipeline_version_id
             
             print(f"✅ Nuova versione '{version_name}' caricata con successo.")
             if pipeline_version_to_return:
