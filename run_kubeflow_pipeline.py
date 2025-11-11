@@ -19,27 +19,37 @@ PIPELINE_FILE = "document_pipeline.yaml"
 KUBEFLOW_NAMESPACE = "kubeflow-user-example-com" 
 
 def get_or_create_experiment(client: kfp.Client, experiment_name: str):
-    """Recupera o crea un esperimento su Kubeflow"""
-    try:
-        experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
-        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id})")
-        return experiment
-    # Gestione con Exception generica
-    except Exception as e:
-        error_str = str(e).lower()
-        # Controlla la stringa dell'errore per capire se è "Not Found"
-        if "no experiment" in error_str or "not found" in error_str or "404" in error_str:
-            print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
+    """
+    Recupera o crea un esperimento su Kubeflow.
+    Logica aggiornata: controlla prima l'ID, poi crea se non esiste.
+    """
+    
+    print(f"Verifica esistenza esperimento '{experiment_name}'...")
+    
+    # 1. Recupera l'ID dell'esperimento (restituisce None se non trovato)
+    # Passiamo il namespace come richiesto
+    experiment = client.get_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
+
+    # 2. Logica di controllo sull'ID
+    # Scenario: Esperimento NON trovato
+    if experiment is None or experiment.id == "":
+        print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
+        try:
             experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
             print(f"✅ Esperimento creato (ID: {experiment.id})")
             return experiment
-        else:
-            # Se l'errore non è "not found", è un errore reale e va rilanciato
-            print(f"Errore API nel recupero esperimento: {e}")
+        except Exception as e:
+            print(f"❌ Errore durante la *creazione* dell'esperimento: {str(e)}")
             raise e
+    
+    # Scenario: Esperimento TROVATO
+    else:
+        print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.id}).")
+        # Ora recuperiamo l'oggetto esperimento completo usando l'ID
+        return experiment
 
 
-def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_name: str):
+def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pipeline_name: str):
     """
     Carica una pipeline. Se esiste, carica una nuova versione.
     Se non esiste, crea la pipeline.
@@ -80,7 +90,6 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
             raise e # Rilancia l'errore se la creazione fallisce
-    
     # Scenario: Pipeline TROVATA
     else:
         print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
@@ -95,7 +104,6 @@ def upload_pipeline_version(client: kfp.Client, pipeline_file: str, pipeline_nam
         except Exception as e:
             print(f"❌ Errore durante l'upload della *versione*: {str(e)}")
             raise e # Rilancia l'errore se l'upload della versione fallisce
-    
     return pipeline_id
 
 
@@ -184,7 +192,7 @@ def main():
             if not os.path.exists(PIPELINE_FILE):
                  print(f"❌ ERRORE: {PIPELINE_FILE} non trovato. Esegui 'make compile-pipeline' prima.")
                  sys.exit(1)
-            upload_pipeline_version(client, PIPELINE_FILE, PIPELINE_NAME)
+            upload_pipeline_version_function(client, PIPELINE_FILE, PIPELINE_NAME)
         
         if args.run:
             run_pipeline(client, experiment.id, PIPELINE_NAME)
