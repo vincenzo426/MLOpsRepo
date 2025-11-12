@@ -14,6 +14,7 @@ from distutils.dir_util import copy_tree
     packages_to_install=["gitpython", "dvc[s3]"]
 )
 def download_from_minio(
+    git_branch: str,
     git_repo_url: str,
     new_commit_hash: str,      # Il commit corrente (es. github.sha)
     old_commit_hash: str,      # Il commit precedente (es. github.event.before)
@@ -75,7 +76,7 @@ def download_from_minio(
     os.makedirs(output_dataset.path, exist_ok=True) # Crea subito la dir di output
 
     # 2. Git
-    run_command(["git", "clone", git_repo_url, "."])
+    run_command(["git", "clone", "-b", git_branch, git_repo_url, "."])
     run_command(["git", "checkout", new_commit_hash])
     print(f"Checkout del commit {new_commit_hash} eseguito.")
 
@@ -400,6 +401,7 @@ def upload_to_qdrant(
 )
 def document_processing_pipeline(
     # Parametri per il download (MODIFICATI)
+    git_branch: str = 'development',
     git_repo_url: str = 'https://github.com/vincenzo426/MLOpsRepo',
     new_commit_hash: str = 'main',
     old_commit_hash: str = 'main', # Default (processa tutto la prima volta)
@@ -422,6 +424,7 @@ def document_processing_pipeline(
 ):
     # --- 1. Fetch Data Task (Modificato) ---
     download_task = download_from_minio(
+        git_branch=git_branch,
         git_repo_url=git_repo_url,
         new_commit_hash=new_commit_hash,
         old_commit_hash=old_commit_hash,

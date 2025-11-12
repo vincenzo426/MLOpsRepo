@@ -8,6 +8,7 @@
 #    dvc_data_path: str [Default: 'data/documents']
 #    dvc_remote_name: str [Default: 'myminio']
 #    embedding_model: str [Default: 'sentence-transformers/all-MiniLM-L6-v2']
+#    git_branch: str [Default: 'development']
 #    git_repo_url: str [Default: 'https://github.com/vincenzo426/MLOpsRepo']
 #    hf_api_key: str [Default: '']
 #    minio_access_key: str [Default: 'minio']
@@ -63,6 +64,8 @@ components:
         dvc_data_path_in_repo:
           parameterType: STRING
         dvc_remote_name:
+          parameterType: STRING
+        git_branch:
           parameterType: STRING
         git_repo_url:
           parameterType: STRING
@@ -251,37 +254,38 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef download_from_minio(\n    git_repo_url: str,\n    new_commit_hash:\
-          \ str,      # Il commit corrente (es. github.sha)\n    old_commit_hash:\
-          \ str,      # Il commit precedente (es. github.event.before)\n    minio_endpoint:\
-          \ str,\n    minio_access_key: str,     # RICEVUTO COME PARAMETRO\n    minio_secret_key:\
-          \ str,     # RICEVUTO COME PARAMETRO\n    dvc_remote_name: str,\n    dvc_data_path_in_repo:\
-          \ str,\n    output_dataset: Output[Dataset]\n):\n    \"\"\"\n    Componente\
-          \ KFP per clonare un repo, trovare i file DVC modificati\n    tra due commit\
-          \ (delta usando --json), scaricare solo quelli e passarli in output.\n \
-          \   \"\"\"\n    import sys\n    import subprocess\n    import json  # Assicurati\
-          \ che json sia importato\n    import os\n    import shutil\n    from distutils.dir_util\
-          \ import copy_tree\n\n    # Funzione helper per eseguire comandi\n    def\
-          \ run_command(command: list, return_stdout=False):\n        print(f\"Esecuzione:\
-          \ {' '.join(command)}\")\n        try:\n            process = subprocess.run(\n\
-          \                command,\n                check=True,\n               \
-          \ stdout=subprocess.PIPE,\n                stderr=subprocess.PIPE,\n   \
-          \             text=True,\n                encoding='utf-8'\n           \
-          \ )\n            # Stampa sempre STDERR se non \xE8 vuoto\n            if\
-          \ process.stderr:\n                print(\"STDERR:\", process.stderr)\n\n\
-          \            # Stampa STDOUT solo se non stiamo cercando di catturarlo\n\
-          \            if not return_stdout:\n                print(\"STDOUT:\", process.stdout)\n\
-          \n            if return_stdout:\n                return process.stdout\n\
-          \        except subprocess.CalledProcessError as e:\n            # Se il\
-          \ comando fallisce, stampa tutto\n            print(f\"Errore durante l'esecuzione\
-          \ di: {' '.join(e.cmd)}\")\n            print(\"STDOUT:\", e.stdout)\n \
-          \           print(\"STDERR:\", e.stderr)\n            sys.exit(1)\n    \
-          \    except Exception as e:\n            print(f\"Errore inatteso: {e}\"\
-          )\n            sys.exit(1)\n\n    # 1. Setup\n    WORKDIR = \"/app/data\"\
-          \n    os.makedirs(WORKDIR, exist_ok=True)\n    os.chdir(WORKDIR)\n    print(f\"\
-          Directory di lavoro: {os.getcwd()}\")\n    os.makedirs(output_dataset.path,\
-          \ exist_ok=True) # Crea subito la dir di output\n\n    # 2. Git\n    run_command([\"\
-          git\", \"clone\", git_repo_url, \".\"])\n    run_command([\"git\", \"checkout\"\
+          \ *\n\ndef download_from_minio(\n    git_branch: str,\n    git_repo_url:\
+          \ str,\n    new_commit_hash: str,      # Il commit corrente (es. github.sha)\n\
+          \    old_commit_hash: str,      # Il commit precedente (es. github.event.before)\n\
+          \    minio_endpoint: str,\n    minio_access_key: str,     # RICEVUTO COME\
+          \ PARAMETRO\n    minio_secret_key: str,     # RICEVUTO COME PARAMETRO\n\
+          \    dvc_remote_name: str,\n    dvc_data_path_in_repo: str,\n    output_dataset:\
+          \ Output[Dataset]\n):\n    \"\"\"\n    Componente KFP per clonare un repo,\
+          \ trovare i file DVC modificati\n    tra due commit (delta usando --json),\
+          \ scaricare solo quelli e passarli in output.\n    \"\"\"\n    import sys\n\
+          \    import subprocess\n    import json  # Assicurati che json sia importato\n\
+          \    import os\n    import shutil\n    from distutils.dir_util import copy_tree\n\
+          \n    # Funzione helper per eseguire comandi\n    def run_command(command:\
+          \ list, return_stdout=False):\n        print(f\"Esecuzione: {' '.join(command)}\"\
+          )\n        try:\n            process = subprocess.run(\n               \
+          \ command,\n                check=True,\n                stdout=subprocess.PIPE,\n\
+          \                stderr=subprocess.PIPE,\n                text=True,\n \
+          \               encoding='utf-8'\n            )\n            # Stampa sempre\
+          \ STDERR se non \xE8 vuoto\n            if process.stderr:\n           \
+          \     print(\"STDERR:\", process.stderr)\n\n            # Stampa STDOUT\
+          \ solo se non stiamo cercando di catturarlo\n            if not return_stdout:\n\
+          \                print(\"STDOUT:\", process.stdout)\n\n            if return_stdout:\n\
+          \                return process.stdout\n        except subprocess.CalledProcessError\
+          \ as e:\n            # Se il comando fallisce, stampa tutto\n          \
+          \  print(f\"Errore durante l'esecuzione di: {' '.join(e.cmd)}\")\n     \
+          \       print(\"STDOUT:\", e.stdout)\n            print(\"STDERR:\", e.stderr)\n\
+          \            sys.exit(1)\n        except Exception as e:\n            print(f\"\
+          Errore inatteso: {e}\")\n            sys.exit(1)\n\n    # 1. Setup\n   \
+          \ WORKDIR = \"/app/data\"\n    os.makedirs(WORKDIR, exist_ok=True)\n   \
+          \ os.chdir(WORKDIR)\n    print(f\"Directory di lavoro: {os.getcwd()}\")\n\
+          \    os.makedirs(output_dataset.path, exist_ok=True) # Crea subito la dir\
+          \ di output\n\n    # 2. Git\n    run_command([\"git\", \"clone\", \"-b\"\
+          , git_branch, git_repo_url, \".\"])\n    run_command([\"git\", \"checkout\"\
           , new_commit_hash])\n    print(f\"Checkout del commit {new_commit_hash}\
           \ eseguito.\")\n\n    # 3. Configurazione DVC (con credenziali passate come\
           \ parametri)\n    print(\"Configurazione DVC remote (con credenziali da\
@@ -455,6 +459,8 @@ root:
               componentInputParameter: dvc_data_path
             dvc_remote_name:
               componentInputParameter: dvc_remote_name
+            git_branch:
+              componentInputParameter: git_branch
             git_repo_url:
               componentInputParameter: git_repo_url
             minio_access_key:
@@ -515,6 +521,10 @@ root:
         parameterType: STRING
       embedding_model:
         defaultValue: sentence-transformers/all-MiniLM-L6-v2
+        isOptional: true
+        parameterType: STRING
+      git_branch:
+        defaultValue: development
         isOptional: true
         parameterType: STRING
       git_repo_url:
