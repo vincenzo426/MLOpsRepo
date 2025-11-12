@@ -116,14 +116,19 @@ def download_from_minio(
         
     all_changed_files = []
     # Estrai i percorsi da 'added' e 'modified'
-    # In DVC 3, i file sono in un dizionario 'diff'
-    if 'diff' in diff_data:
-        for state in ['added', 'modified']:
-            if state in diff_data['diff']:
-                for item in diff_data['diff'][state]:
-                    # Il percorso è ora in item['path']
-                    if 'path' in item:
-                        all_changed_files.append(item['path'])
+    # Il JSON restituito da dvc diff ha la struttura: {"added": [...], "modified": [...], ...}
+    for state in ['added', 'modified']:
+        if state in diff_data:
+            for item in diff_data[state]:
+                # Il percorso è in item['path']
+                if isinstance(item, dict) and 'path' in item:
+                    path = item['path']
+                    # Ignora le directory (terminano con /)
+                    if not path.endswith('/'):
+                        all_changed_files.append(path)
+                    # Gestisci anche il caso in cui l'item sia direttamente una stringa
+                    elif isinstance(item, str) and not item.endswith('/'):
+                        all_changed_files.append(item)
 
     # Filtra solo i file nel nostro path di dati
     files_to_pull = [
