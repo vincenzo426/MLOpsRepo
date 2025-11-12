@@ -83,7 +83,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
             
             # --- MODIFICA CHIAVE ---
             # Assegna la versione di default al valore di ritorno
-            pipeline_version_to_return = None
+            pipeline_version_to_return = pipeline.default_version.pipeline_version_id
             
             print(f"✅ Pipeline creata con successo!")
             print(f"   Pipeline ID: {pipeline_id}")
@@ -122,7 +122,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
     return pipeline_version_to_return
 
 
-def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id=None):
+def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id: str):
     """
     Esegue l'ultima versione della pipeline specificata.
     """
@@ -143,23 +143,14 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, ver
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         pipeline_id = client.get_pipeline_id(name=pipeline_name)
         
-        if version_id is None:
-            run = client.run_pipeline(
-                experiment_id=experiment_id,
-                job_name=run_name, 
-                pipeline_id=pipeline_id,
-                version_id=None,
-                params=arguments
-            )
-        else:
-            run = client.run_pipeline(
-                experiment_id=experiment_id,
-                job_name=run_name, 
-                pipeline_id=pipeline_id,
-                version_id=version_id,
-                params=arguments
-            )
-        
+        run = client.run_pipeline(
+            experiment_id=experiment_id,
+            job_name=run_name, 
+            pipeline_id=pipeline_id,
+            version_id=version_id,
+            params=arguments
+        )
+
         run_id = getattr(run, 'id', None) or getattr(run, 'run_id', None)
         print(f"✅ Pipeline run avviato!")
         if run_id:
