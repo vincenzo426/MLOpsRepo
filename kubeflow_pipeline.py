@@ -1,7 +1,6 @@
 from kfp import dsl
 from kfp import compiler
 from kfp.dsl import Output, Input, Dataset
-from kfp.kubernetes import mount_secret # Lo importiamo ancora, ma non lo useremo
 import kfp
 import os
 import shutil # Aggiunto per copiare i file
