@@ -151,7 +151,7 @@ def main():
     parser.add_argument('--run', action='store_true',
                        help='Esecuzione ultima versione della pipeline')
     parser.add_argument('--endpoint', default=None,
-                       help='Endpoint Kubeflow')s
+                       help='Endpoint Kubeflow')
     # --- NUOVI ARGOMENTI ---
     parser.add_argument('--new_commit_hash', default='main',
                        help='Git commit hash NUOVO (es. github.sha)')
