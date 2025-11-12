@@ -6,7 +6,7 @@ on:
       - 'data/documents.dvc'
       - 'kubeflow_pipeline.py'
     branches:
-      - main
+      - main, development
 
 jobs:
   pipeline-workflow:
@@ -16,7 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # Fetch-depth 0 (full history) è necessario per DVC diff
+          # se il commit 'before' è più vecchio di 2 commit
+          fetch-depth: 0 
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -54,29 +56,23 @@ jobs:
           python kubeflow_pipeline.py
           echo "Compilazione completata. Il file 'document_pipeline.yaml' è aggiornato."
 
-      # Configura DVC (serve per scenari 2 e 3)
-      - name: Configure DVC
-        if: steps.check_files.outputs.data_changed == 'true'
-        run: |
-          echo "Configurazione DVC in corso..."
-          dvc remote modify myminio access_key_id ${{ secrets.MINIO_ACCESS_KEY }}
-          dvc remote modify myminio secret_access_key ${{ secrets.MINIO_SECRET_KEY }}
-          dvc status
-
       # SCENARIO 2: Cambiano solo i dati.
       # Azione: Carica l'ultima versione compilata (dal repo) ed eseguila.
       - name: Upload and Run Pipeline (Data Change Only)
         if: steps.check_files.outputs.pipeline_changed == 'false' && steps.check_files.outputs.data_changed == 'true'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
-          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           KUBEFLOW_ENDPOINT: http://localhost:8888
-          # AGGIUNTO: Passa il token di autenticazione
           KUBEFLOW_PIPELINE_TOKEN: ${{ secrets.KUBEFLOW_PIPELINE_TOKEN }}
         run: |
           echo "Rilevata modifica solo in 'data/documents.dvc'."
           echo "Azione: Upload e Run dell'ultima versione compilata..."
-          python run_kubeflow_pipeline.py --upload --run
+          python run_kubeflow_pipeline.py --upload --run \
+            --git_repo ${{ github.repositoryUrl }} \
+            --new_commit_hash ${{ github.sha }} \
+            --old_commit_hash ${{ github.event.before }} \
+            --minio_access_key ${{ secrets.MINIO_ACCESS_KEY }} \
+            --minio_secret_key ${{ secrets.MINIO_SECRET_KEY }}
 
       # SCENARIO 3: Cambiano sia codice che dati.
       # Azione: Compila, Carica la nuova versione ed Eseguila.
@@ -84,9 +80,7 @@ jobs:
         if: steps.check_files.outputs.pipeline_changed == 'true' && steps.check_files.outputs.data_changed == 'true'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
-          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           KUBEFLOW_ENDPOINT: http://localhost:8888
-          # AGGIUNTO: Passa il token di autenticazione
           KUBEFLOW_PIPELINE_TOKEN: ${{ secrets.KUBEFLOW_PIPELINE_TOKEN }}
         run: |
           echo "Rilevate modifiche sia in codice che in dati."
@@ -94,4 +88,9 @@ jobs:
           python kubeflow_pipeline.py
           
           echo "Azione: Upload e Run della versione appena compilata..."
-          python run_kubeflow_pipeline.py --upload --run
+          python run_kubeflow_pipeline.py --upload --run \
+            --git_repo ${{ github.repositoryUrl }} \
+            --new_commit_hash ${{ github.sha }} \
+            --old_commit_hash ${{ github.event.before }} \
+            --minio_access_key ${{ secrets.MINIO_ACCESS_KEY }} \
+            --minio_secret_key ${{ secrets.MINIO_SECRET_KEY }}
