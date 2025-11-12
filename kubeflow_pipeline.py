@@ -204,17 +204,24 @@ def upload_to_qdrant(
         embedded_chunks = json.load(f)
     
     points = []
+    
+    import hashlib
+
     for chunk in embedded_chunks:
-        point = PointStruct(
-            id=str(uuid.uuid4()),
-            vector=chunk['embedding'],
-            payload={
-                'source': chunk['source'],
-                'chunk_id': chunk['chunk_id'],
-                'content': chunk['content']
-            }
-        )
-        points.append(point)
+    # Genera ID deterministico
+        chunk_identifier = f"{chunk['source']}_{chunk['chunk_id']}"
+        chunk_id = hashlib.md5(chunk_identifier.encode()).hexdigest()
+    
+    point = PointStruct(
+        id=chunk_id,  # <-- ID deterministico invece di UUID
+        vector=chunk['embedding'],
+        payload={
+            'source': chunk['source'],
+            'chunk_id': chunk['chunk_id'],
+            'content': chunk['content']
+        }
+    )
+    points.append(point)
     
     batch_size = 100
     for i in range(0, len(points), batch_size):

@@ -280,17 +280,20 @@ deploymentSpec:
           \ creata\")\n    except Exception as e:\n        print(f\"Collection gi\xE0\
           \ esistente o errore: {e}\")\n\n    embeddings_file = os.path.join(embeddings.path,\
           \ \"embeddings.json\")\n    with open(embeddings_file, 'r', encoding='utf-8')\
-          \ as f:\n        embedded_chunks = json.load(f)\n\n    points = []\n   \
-          \ for chunk in embedded_chunks:\n        point = PointStruct(\n        \
-          \    id=str(uuid.uuid4()),\n            vector=chunk['embedding'],\n   \
-          \         payload={\n                'source': chunk['source'],\n      \
-          \          'chunk_id': chunk['chunk_id'],\n                'content': chunk['content']\n\
-          \            }\n        )\n        points.append(point)\n\n    batch_size\
-          \ = 100\n    for i in range(0, len(points), batch_size):\n        batch\
-          \ = points[i:i+batch_size]\n        client.upsert(\n            collection_name=collection_name,\n\
-          \            points=batch\n        )\n        print(f\"Uploaded batch {i//batch_size\
-          \ + 1}/{(len(points)-1)//batch_size + 1}\")\n\n    print(f\"\u2713 Uploaded\
-          \ {len(points)} points to Qdrant collection '{collection_name}'\")\n\n"
+          \ as f:\n        embedded_chunks = json.load(f)\n\n    points = []\n\n \
+          \   import hashlib\n\n    for chunk in embedded_chunks:\n    # Genera ID\
+          \ deterministico\n        chunk_identifier = f\"{chunk['source']}_{chunk['chunk_id']}\"\
+          \n        chunk_id = hashlib.md5(chunk_identifier.encode()).hexdigest()\n\
+          \n    point = PointStruct(\n        id=chunk_id,  # <-- ID deterministico\
+          \ invece di UUID\n        vector=chunk['embedding'],\n        payload={\n\
+          \            'source': chunk['source'],\n            'chunk_id': chunk['chunk_id'],\n\
+          \            'content': chunk['content']\n        }\n    )\n    points.append(point)\n\
+          \n    batch_size = 100\n    for i in range(0, len(points), batch_size):\n\
+          \        batch = points[i:i+batch_size]\n        client.upsert(\n      \
+          \      collection_name=collection_name,\n            points=batch\n    \
+          \    )\n        print(f\"Uploaded batch {i//batch_size + 1}/{(len(points)-1)//batch_size\
+          \ + 1}\")\n\n    print(f\"\u2713 Uploaded {len(points)} points to Qdrant\
+          \ collection '{collection_name}'\")\n\n"
         image: python:3.10
 pipelineInfo:
   description: Pipeline per processare documenti da MinIO a Qdrant con LangChain
