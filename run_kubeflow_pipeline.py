@@ -83,7 +83,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
             
             # --- MODIFICA CHIAVE ---
             # Assegna la versione di default al valore di ritorno
-            pipeline_version_to_return = pipeline.default_version.pipeline_version_id
+            pipeline_version_to_return = pipeline_name
             
             print(f"✅ Pipeline creata con successo!")
             print(f"   Pipeline ID: {pipeline_id}")
