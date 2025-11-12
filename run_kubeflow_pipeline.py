@@ -83,12 +83,12 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
             
             # --- MODIFICA CHIAVE ---
             # Assegna la versione di default al valore di ritorno
-            pipeline_version_to_return = pipeline_name
+            pipeline_version_to_return = None
             
             print(f"✅ Pipeline creata con successo!")
             print(f"   Pipeline ID: {pipeline_id}")
             if pipeline_version_to_return:
-                print(f"   Versione di Default ID: {pipeline_version_to_return}")
+                print(f"   Versione di Default ID: {pipeline_name}")
 
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
@@ -122,7 +122,7 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
     return pipeline_version_to_return
 
 
-def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id: str):
+def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id=None):
     """
     Esegue l'ultima versione della pipeline specificata.
     """
