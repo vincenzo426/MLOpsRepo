@@ -31,7 +31,7 @@ def download_from_minio(
     """
     import sys
     import subprocess
-
+    import os
     # Funzione helper per eseguire comandi
     def run_command(command: list, return_stdout=False):
         print(f"Esecuzione: {' '.join(command)}")
