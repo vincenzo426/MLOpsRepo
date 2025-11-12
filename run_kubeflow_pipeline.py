@@ -47,8 +47,24 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
                 pipeline_name=pipeline_name,
                 description=f"Pipeline per processing documenti AgenticRAG"
             )
+             # Estrai l'ID della pipeline
             pipeline_id = pipeline.pipeline_id
-            pipeline_version_to_return = pipeline.default_version.pipeline_version_id
+
+            if not pipeline_id:
+                raise ValueError(f"Nessuna pipeline trovata con nome: {pipeline_name}")
+
+            # 2. Elenca le versioni della pipeline
+            versions = client.list_pipeline_versions(pipeline_id=pipeline_id)
+
+            if not versions.pipeline_versions:
+                raise ValueError(f"Nessuna versione trovata per la pipeline {pipeline_name}")
+
+            # 3. Seleziona la versione più recente (di solito la default)
+            default_version = versions.pipeline_versions[0]
+            
+            # --- MODIFICA CHIAVE ---
+            # Assegna la versione di default al valore di ritorno
+            pipeline_version_to_return = default_version.pipeline_version_id
             print(f"✅ Pipeline creata con successo! ID: {pipeline_id}, Versione ID: {pipeline_version_to_return}")
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
