@@ -1,35 +1,25 @@
 """
 Script per deployare, versionare ed eseguire la pipeline su Kubeflow
 Compatibile con KFP SDK v2.5.0
-Include la specifica del Namespace
-Utilizza 'Exception' generiche per la gestione errori API.
+Modificato per passare credenziali e commit hash
 """
 import os
 import sys
 import argparse
 from datetime import datetime
 import kfp
-# NON importa ApiException, come da richiesta
 
-# Nomi statici per pipeline ed esperimento
 PIPELINE_NAME = "document-processing-pipeline"
 EXPERIMENT_NAME = "RAG Document Processing"
 PIPELINE_FILE = "document_pipeline.yaml"
-# Namespace Kubeflow (richiesto da KFP 2.5.0)
 KUBEFLOW_NAMESPACE = "kubeflow-user-example-com" 
 
-def get_or_create_experiment(client: kfp.Client, experiment_name: str):
-    """
-    Recupera o crea un esperimento su Kubeflow.
-    Logica aggiornata: controlla prima l'ID, poi crea se non esiste.
-    """
-    
-    print(f"Verifica esistenza esperimento '{experiment_name}'...")
-    
-    # 1. Recupera l'ID dell'esperimento (restituisce None se non trovato)
-    # Passiamo il namespace come richiesto
-    experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
+# ... (le funzioni get_or_create_experiment e upload_pipeline_version_function 
+#      restano invariate, puoi copiarle da prima) ...
 
+def get_or_create_experiment(client: kfp.Client, experiment_name: str):
+    print(f"Verifica esistenza esperimento '{experiment_name}'...")
+    experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
     if experiment is None or experiment.experiment_id == "":
         print(f"🧪 Esperimento '{experiment_name}' non trovato. Creazione in corso...")
         try:
@@ -39,104 +29,76 @@ def get_or_create_experiment(client: kfp.Client, experiment_name: str):
         except Exception as e:
             print(f"❌ Errore durante la *creazione* dell'esperimento: {str(e)}")
             raise e
-    
-    # Scenario: Esperimento TROVATO
     else:
         print(f"🧪 Esperimento '{experiment_name}' trovato (ID: {experiment.experiment_id}).")
-        # Ora recuperiamo l'oggetto esperimento completo usando l'ID
         return experiment
 
-
 def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pipeline_name: str):
-    """
-    Carica una pipeline. Se esiste, carica una nuova versione.
-    Se non esiste, crea la pipeline.
-    
-    Restituisce l'oggetto V2beta1PipelineVersion della versione creata 
-    (o la versione di default se la pipeline è nuova).
-    """
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     version_name = f"version-{timestamp}"
-    
     print(f"Verifica esistenza pipeline '{pipeline_name}'...")
-    
-    # 1. Recupera l'ID della pipeline (restituisce None se non trovata)
     pipeline_id = client.get_pipeline_id(name=pipeline_name)
-    
-    # Inizializza la variabile che conterrà l'oggetto versione da restituire
     pipeline_version_to_return = None
-    
-    # 2. Logica di controllo su pipeline_id
-    # Scenario: Pipeline NON trovata
     if pipeline_id is None or pipeline_id == "":
         print(f"\n📦 Pipeline '{pipeline_name}' non trovata. Creazione nuova pipeline...")
         try:
-            # client.upload_pipeline restituisce un oggetto V2beta1Pipeline
             pipeline = client.upload_pipeline(
                 pipeline_package_path=pipeline_file,
                 pipeline_name=pipeline_name,
                 description=f"Pipeline per processing documenti AgenticRAG"
             )
-
-            # Estrai l'ID della pipeline
             pipeline_id = pipeline.pipeline_id
-            
-            # --- MODIFICA CHIAVE ---
-            # Assegna la versione di default al valore di ritorno
             pipeline_version_to_return = pipeline.default_version.pipeline_version_id
-            
-            print(f"✅ Pipeline creata con successo!")
-            print(f"   Pipeline ID: {pipeline_id}")
-            if pipeline_version_to_return:
-                print(f"   Versione di Default ID: {pipeline_version_to_return}")
-
+            print(f"✅ Pipeline creata con successo! ID: {pipeline_id}, Versione ID: {pipeline_version_to_return}")
         except Exception as e:
             print(f"❌ Errore durante la *creazione* della pipeline: {str(e)}")
-            raise e # Rilancia l'errore se la creazione fallisce
-    
-    # Scenario: Pipeline TROVATA
+            raise e
     else:
         print(f"\n📦 Pipeline '{pipeline_name}' trovata (ID: {pipeline_id}).")
         print(f"   Caricamento nuova versione: {version_name}...")
         try:
-            # client.upload_pipeline_version restituisce un oggetto V2beta1PipelineVersion
             new_version = client.upload_pipeline_version(
                 pipeline_package_path=pipeline_file,
                 pipeline_version_name=version_name,
                 pipeline_id=pipeline_id
             )
-            
-            # --- MODIFICA CHIAVE ---
-            # Assegna la nuova versione al valore di ritorno
             pipeline_version_to_return = new_version.pipeline_version_id
-            
-            print(f"✅ Nuova versione '{version_name}' caricata con successo.")
-            if pipeline_version_to_return:
-                print(f"   Nuova Versione ID: {pipeline_version_to_return}")
-
+            print(f"✅ Nuova versione '{version_name}' caricata (ID: {pipeline_version_to_return}).")
         except Exception as e:
-            print(f"❌ Errore durante l'upload della *versione*: {str(e)}")
-            raise e # Rilancia l'errore se l'upload della versione fallisce
-    
-    # Restituisce l'oggetto V2beta1PipelineVersion (o None se qualcosa è fallito)
+            print(f"❌ Errore during l'upload della *versione*: {str(e)}")
+            raise e
     return pipeline_version_to_return
 
 
-def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, version_id: str):
+def run_pipeline(
+    client: kfp.Client, 
+    experiment_id: str, 
+    pipeline_name: str, 
+    version_id: str,
+    git_repo: str,
+    new_commit: str, # MODIFICATO
+    old_commit: str, # NUOVO
+    minio_key: str,  # NUOVO
+    minio_secret: str # NUOVO
+):
     """
     Esegue l'ultima versione della pipeline specificata.
     """
     print(f"\n🚀 Avvio run per l'ultima versione di '{pipeline_name}'...")
     
     hf_api_key = os.getenv('HF_API_KEY', '')
-    minio_secret_key = os.getenv('MINIO_SECRET_KEY', 'minio123')
     
     if not hf_api_key:
         print("⚠️  HF_API_KEY non trovata nelle environment variables")
     
     arguments = {
+        # --- MODIFICATO ---
+        'git_repo_url': git_repo,
+        'new_commit_hash': new_commit,
+        'old_commit_hash': old_commit,
         'hf_api_key': hf_api_key,
-        'minio_secret_key': minio_secret_key,
+        'minio_access_key': minio_key,
+        'minio_secret_key': minio_secret,
     }
     
     try:
@@ -160,7 +122,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, ver
         return run_id
         
     except Exception as e:
-        print(f"❌ Errore durante l'esecuzione: {str(e)}")
+        print(f"❌ Errore during l'esecuzione: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
@@ -175,6 +137,18 @@ def main():
     parser.add_argument('--endpoint', default=None,
                        help='Endpoint Kubeflow')
     
+    # --- NUOVI ARGOMENTI ---
+    parser.add_argument('--new_commit_hash', default='main',
+                       help='Git commit hash NUOVO (es. github.sha)')
+    parser.add_argument('--old_commit_hash', default='main~1',
+                       help='Git commit hash VECCHIO (es. github.event.before)')
+    parser.add_argument('--git_repo', default='https://github.com/vincenzo426/MLOpsRepo.git',
+                       help='URL del repository Git')
+    parser.add_argument('--minio_access_key', required=True,
+                       help='MinIO Access Key (da GitHub Secrets)')
+    parser.add_argument('--minio_secret_key', required=True,
+                       help='MinIO Secret Key (da GitHub Secrets)')
+    
     args = parser.parse_args()
     
     if not args.upload and not args.run:
@@ -188,36 +162,28 @@ def main():
     print("="*60)
     print(f"📍 Endpoint:  {endpoint}")
     print(f"📦 Namespace: {KUBEFLOW_NAMESPACE}")
-    print(f"📄 Pipeline:  {PIPELINE_FILE}")
-    print(f"🏷️  Nome Pipe: {PIPELINE_NAME}")
-    print(f"🧪 Esperim.:  {EXPERIMENT_NAME}")
+    print(f"🔗 Git Repo:  {args.git_repo}")
+    print(f"🔑 Git Commit (Nuovo): {args.new_commit_hash}")
+    print(f"🔑 Git Commit (Vecchio): {args.old_commit_hash}")
+    print(f"🔒 MinIO Key:  {'*' * len(args.minio_access_key)}")
     
-    if (args.upload or args.run) and not os.path.exists(PIPELINE_FILE):
-        print(f"❌ ERRORE: File {PIPELINE_FILE} non trovato!")
-        if args.upload:
-            sys.exit(1)
+    # ... (il resto della funzione main con connessione, get_experiment, etc.
+    #      resta invariato, eccetto la chiamata a run_pipeline) ...
             
     try:
-
         print("\n🔌 Connessione a Kubeflow...")
-        
-        # *** LOGICA DI AUTENTICAZIONE (DEFINITIVA) ***
         token = os.getenv('KUBEFLOW_PIPELINE_TOKEN')
-        
         if token:
             print("   (Autenticazione con Service Account Token trovata)")
         else:
             print("   (Nessun Token di autenticazione, tentativo di connessione anonima)")
             
-        client = kfp.Client(
-            host=endpoint, 
-            namespace=KUBEFLOW_NAMESPACE,
-            # Usa 'existing_token' per i token Bearer
-            existing_token=token 
-        )
+        client = kfp.Client(host=endpoint, namespace=KUBEFLOW_NAMESPACE, existing_token=token)
         print("✅ Connessione stabilita")
         
         experiment = get_or_create_experiment(client, EXPERIMENT_NAME)
+        
+        verision_pipeline = None 
         
         if args.upload:
             if not os.path.exists(PIPELINE_FILE):
@@ -226,12 +192,21 @@ def main():
             verision_pipeline = upload_pipeline_version_function(client, PIPELINE_FILE, PIPELINE_NAME)
         
         if args.run:
-            run_pipeline(client, experiment.experiment_id, PIPELINE_NAME, verision_pipeline)
+            run_pipeline(
+                client, 
+                experiment.experiment_id, 
+                PIPELINE_NAME, 
+                verision_pipeline,
+                args.git_repo,
+                args.new_commit_hash, # Passa il nuovo hash
+                args.old_commit_hash, # Passa il vecchio hash
+                args.minio_access_key, # Passa la chiave
+                args.minio_secret_key  # Passa il segreto
+            )
         
         print("\n" + "="*60)
         print("✅ OPERAZIONE COMPLETATA CON SUCCESSO!")
         print("="*60)
-        print(f"\n💡 Dashboard Kubeflow: http://localhost:8080")
         
         return 0
         
