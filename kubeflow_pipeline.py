@@ -13,10 +13,6 @@ from distutils.dir_util import copy_tree
     base_image="python:3.10",
     packages_to_install=["gitpython", "dvc[s3]"]
 )
-@dsl.component(
-    base_image="python:3.10",
-    packages_to_install=["gitpython", "dvc[s3]"]
-)
 def download_from_minio(
     git_branch: str,
     git_repo_url: str,

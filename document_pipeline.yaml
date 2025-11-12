@@ -15,7 +15,6 @@
 #    minio_endpoint: str [Default: 'minio-service.kubeflow.svc.cluster.local:9000']
 #    minio_secret_key: str [Default: '']
 #    new_commit_hash: str [Default: 'main']
-#    old_commit_hash: str [Default: 'main']
 #    qdrant_url: str [Default: 'http://qdrant:6333']
 #    vector_size: int [Default: 384.0]
 components:
@@ -76,8 +75,6 @@ components:
         minio_secret_key:
           parameterType: STRING
         new_commit_hash:
-          parameterType: STRING
-        old_commit_hash:
           parameterType: STRING
     outputDefinitions:
       artifacts:
@@ -255,99 +252,37 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef download_from_minio(\n    git_branch: str,\n    git_repo_url:\
-          \ str,\n    new_commit_hash: str,      # Il commit corrente (es. github.sha)\n\
-          \    old_commit_hash: str,      # Il commit precedente (es. github.event.before)\n\
-          \    minio_endpoint: str,\n    minio_access_key: str,     # RICEVUTO COME\
-          \ PARAMETRO\n    minio_secret_key: str,     # RICEVUTO COME PARAMETRO\n\
-          \    dvc_remote_name: str,\n    dvc_data_path_in_repo: str,\n    output_dataset:\
-          \ Output[Dataset]\n):\n    \"\"\"\n    Componente KFP per clonare un repo,\
-          \ trovare i file DVC modificati\n    tra due commit (delta usando --json),\
-          \ scaricare solo quelli e passarli in output.\n    \"\"\"\n    import sys\n\
-          \    import subprocess\n    import json  # Assicurati che json sia importato\n\
-          \    import os\n    import shutil\n    from distutils.dir_util import copy_tree\n\
-          \n    # Funzione helper per eseguire comandi\n    def run_command(command:\
-          \ list, return_stdout=False):\n        print(f\"Esecuzione: {' '.join(command)}\"\
-          )\n        try:\n            process = subprocess.run(\n               \
-          \ command,\n                check=True,\n                stdout=subprocess.PIPE,\n\
-          \                stderr=subprocess.PIPE,\n                text=True,\n \
-          \               encoding='utf-8'\n            )\n            # Stampa sempre\
-          \ STDERR se non \xE8 vuoto\n            if process.stderr:\n           \
-          \     print(\"STDERR:\", process.stderr)\n\n            # Stampa STDOUT\
-          \ solo se non stiamo cercando di catturarlo\n            if not return_stdout:\n\
-          \                print(\"STDOUT:\", process.stdout)\n\n            if return_stdout:\n\
-          \                return process.stdout\n        except subprocess.CalledProcessError\
-          \ as e:\n            # Se il comando fallisce, stampa tutto\n          \
-          \  print(f\"Errore durante l'esecuzione di: {' '.join(e.cmd)}\")\n     \
-          \       print(\"STDOUT:\", e.stdout)\n            print(\"STDERR:\", e.stderr)\n\
-          \            sys.exit(1)\n        except Exception as e:\n            print(f\"\
-          Errore inatteso: {e}\")\n            sys.exit(1)\n\n    # 1. Setup\n   \
-          \ WORKDIR = \"/app/data\"\n    os.makedirs(WORKDIR, exist_ok=True)\n   \
-          \ os.chdir(WORKDIR)\n    print(f\"Directory di lavoro: {os.getcwd()}\")\n\
-          \    os.makedirs(output_dataset.path, exist_ok=True) # Crea subito la dir\
-          \ di output\n\n    # 2. Git\n    run_command([\"git\", \"clone\", \"-b\"\
-          , git_branch, git_repo_url, \".\"])\n    run_command([\"git\", \"checkout\"\
-          , new_commit_hash])\n    print(f\"Checkout del commit {new_commit_hash}\
-          \ eseguito.\")\n\n    # 3. Configurazione DVC (con credenziali passate come\
-          \ parametri)\n    print(\"Configurazione DVC remote (con credenziali da\
-          \ parametri)...\")\n    run_command([\"dvc\", \"remote\", \"modify\", \"\
-          --local\", dvc_remote_name, \"endpointurl\", minio_endpoint])\n    run_command([\"\
-          dvc\", \"remote\", \"modify\", \"--local\", dvc_remote_name, \"access_key_id\"\
-          , minio_access_key])\n    run_command([\"dvc\", \"remote\", \"modify\",\
-          \ \"--local\", dvc_remote_name, \"secret_access_key\", minio_secret_key])\n\
+          \ str,\n    new_commit_hash: str,\n    minio_endpoint: str,\n    minio_access_key:\
+          \ str,\n    minio_secret_key: str,\n    dvc_remote_name: str,\n    dvc_data_path_in_repo:\
+          \ str,\n    output_dataset: Output[Dataset]\n):\n    \"\"\"\n    Componente\
+          \ KFP per clonare repo e scaricare TUTTI i dati DVC.\n    \"\"\"\n    import\
+          \ sys\n    import subprocess\n    import os\n    import shutil\n\n    def\
+          \ run_command(command: list):\n        print(f\"Esecuzione: {' '.join(command)}\"\
+          )\n        result = subprocess.run(command, capture_output=True, text=True)\n\
+          \        if result.stdout:\n            print(\"STDOUT:\", result.stdout)\n\
+          \        if result.stderr:\n            print(\"STDERR:\", result.stderr)\n\
+          \        if result.returncode != 0:\n            sys.exit(1)\n        return\
+          \ result.stdout\n\n    # Setup\n    WORKDIR = \"/app/data\"\n    os.makedirs(WORKDIR,\
+          \ exist_ok=True)\n    os.chdir(WORKDIR)\n    os.makedirs(output_dataset.path,\
+          \ exist_ok=True)\n\n    # Git clone e checkout\n    run_command([\"git\"\
+          , \"clone\", \"-b\", git_branch, git_repo_url, \".\"])\n    run_command([\"\
+          git\", \"checkout\", new_commit_hash])\n    print(f\"\u2713 Checkout del\
+          \ commit {new_commit_hash}\")\n\n    # Configurazione DVC\n    print(\"\
+          Configurazione DVC remote...\")\n    run_command([\"dvc\", \"remote\", \"\
+          modify\", \"--local\", dvc_remote_name, \"endpointurl\", minio_endpoint])\n\
           \    run_command([\"dvc\", \"remote\", \"modify\", \"--local\", dvc_remote_name,\
-          \ \"use_ssl\", \"false\"])\n\n    # 4. Logica \"Delta\" (dvc diff) -- MODIFICATA\
-          \ PER USARE --json\n    print(f\"Calcolo del delta (formato JSON) tra {old_commit_hash}\
-          \ e {new_commit_hash}...\")\n\n    # Assicura che anche il vecchio commit\
-          \ sia \"fetchato\" per poter fare il diff\n    run_command([\"git\", \"\
-          fetch\", \"origin\", old_commit_hash])\n\n    diff_output_json = \"\"\n\
-          \    try:\n        # USA --json INVECE DI --name-only\n        diff_output_json\
-          \ = run_command(\n            [\"dvc\", \"diff\", \"--json\", old_commit_hash,\
-          \ new_commit_hash],\n            return_stdout=True\n        )\n       \
-          \ # Se l'output \xE8 vuoto, inizializza come JSON vuoto\n        if not\
-          \ diff_output_json:\n            diff_data = {}\n        else:\n       \
-          \     diff_data = json.loads(diff_output_json)\n\n    except subprocess.CalledProcessError\
-          \ as e:\n        # dvc diff pu\xF2 restituire un errore se non ci sono modifiche\
-          \ DVC,\n        # trattiamo questo come \"nessuna modifica\".\n        print(f\"\
-          dvc diff ha fallito (probabilmente nessuna modifica DVC): {e.stderr}\")\n\
-          \        diff_data = {}\n    except json.JSONDecodeError:\n        print(f\"\
-          Impossibile parsare l'output JSON di dvc diff: {diff_output_json}\")\n \
-          \       diff_data = {}\n\n    all_changed_files = []\n    # Il JSON restituito\
-          \ da dvc diff ha la struttura: {\"added\": [...], \"modified\": [...], ...}\n\
-          \    for state in ['added', 'modified']:\n        if state in diff_data:\n\
-          \            print(f\"DEBUG: Trovati {len(diff_data[state])} file in stato\
-          \ '{state}'\")\n            for item in diff_data[state]:\n            \
-          \    # Il percorso \xE8 in item['path']\n                if isinstance(item,\
-          \ dict) and 'path' in item:\n                    path = item['path']\n \
-          \                   # Ignora le directory (terminano con /)\n          \
-          \          if not path.endswith('/'):\n                        all_changed_files.append(path)\n\
-          \                        print(f\"  - Aggiunto: {path}\")\n            \
-          \    # Gestisci anche il caso in cui l'item sia direttamente una stringa\n\
-          \                elif isinstance(item, str) and not item.endswith('/'):\n\
-          \                    all_changed_files.append(item)\n                  \
-          \  print(f\"  - Aggiunto (stringa): {item}\")\n\n    # Dopo il loop che\
-          \ popola all_changed_files, aggiungi:\n    print(f\"DEBUG: all_changed_files\
-          \ = {all_changed_files}\")\n\n    files_to_pull = [\n        f for f in\
-          \ all_changed_files \n        if f.startswith(dvc_data_path_in_repo)\n \
-          \   ]\n\n    print(f\"DEBUG: files_to_pull dopo filtraggio = {files_to_pull}\"\
-          )\n    print(f\"DEBUG: dvc_data_path_in_repo = {dvc_data_path_in_repo}\"\
-          )\n\n    if not files_to_pull:\n        print(\"\u2713 Nessun file di dati\
-          \ modificato. La pipeline non processer\xE0 nulla.\")\n        return\n\n\
-          \    print(f\"File modificati trovati ({len(files_to_pull)}): \\n{files_to_pull}\"\
-          )\n\n    # 5. Scarica *solo* i file modificati\n    print(\"Scaricamento\
-          \ solo dei file modificati...\")\n    # Dobbiamo passare i file .dvc corrispondenti,\
-          \ non i file raw\n    # Ma `dvc pull` \xE8 abbastanza intelligente da gestire\
-          \ i path diretti\n    run_command([\"dvc\", \"pull\", \"--allow-missing\"\
-          ] + files_to_pull)\n\n    # 6. Copia *solo* i file modificati nell'Output[Path]\
-          \ di KFP\n    print(f\"Copia dei file modificati in {output_dataset.path}...\"\
-          )\n    copied_count = 0\n    for file_in_repo in files_to_pull:\n      \
-          \  source_path = os.path.join(WORKDIR, file_in_repo)\n\n        if os.path.isdir(source_path):\n\
-          \            continue # Ignora le directory, ci interessano i file\n\n \
-          \       # Crea la stessa struttura di cartelle nell'output\n        # Assicurati\
-          \ che il path relativo sia corretto\n        relative_path = os.path.relpath(source_path,\
-          \ WORKDIR)\n        target_path = os.path.join(output_dataset.path, relative_path)\n\
-          \n        os.makedirs(os.path.dirname(target_path), exist_ok=True)\n   \
-          \     shutil.copy(source_path, target_path)\n        copied_count += 1\n\
-          \n    print(f\"\u2713 Copiati {copied_count} file modificati.\")\n\n"
+          \ \"access_key_id\", minio_access_key])\n    run_command([\"dvc\", \"remote\"\
+          , \"modify\", \"--local\", dvc_remote_name, \"secret_access_key\", minio_secret_key])\n\
+          \    run_command([\"dvc\", \"remote\", \"modify\", \"--local\", dvc_remote_name,\
+          \ \"use_ssl\", \"false\"])\n\n    # Pull di TUTTI i dati\n    print(f\"\
+          Download di tutti i dati da {dvc_data_path_in_repo}...\")\n    run_command([\"\
+          dvc\", \"pull\", dvc_data_path_in_repo])\n\n    # Copia tutti i file nell'output\n\
+          \    source_path = os.path.join(WORKDIR, dvc_data_path_in_repo)\n    if\
+          \ os.path.exists(source_path):\n        shutil.copytree(source_path, output_dataset.path,\
+          \ dirs_exist_ok=True)\n        file_count = sum(len(files) for _, _, files\
+          \ in os.walk(output_dataset.path))\n        print(f\"\u2713 Copiati {file_count}\
+          \ file\")\n    else:\n        print(f\"\u26A0\uFE0F Path {source_path} non\
+          \ trovato\")\n\n"
         image: python:3.10
     exec-upload-to-qdrant:
       container:
@@ -476,8 +411,6 @@ root:
               componentInputParameter: minio_secret_key
             new_commit_hash:
               componentInputParameter: new_commit_hash
-            old_commit_hash:
-              componentInputParameter: old_commit_hash
         taskInfo:
           name: download-from-minio
       upload-to-qdrant:
@@ -553,10 +486,6 @@ root:
         isOptional: true
         parameterType: STRING
       new_commit_hash:
-        defaultValue: main
-        isOptional: true
-        parameterType: STRING
-      old_commit_hash:
         defaultValue: main
         isOptional: true
         parameterType: STRING
