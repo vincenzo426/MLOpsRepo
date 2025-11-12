@@ -156,8 +156,6 @@ def main():
     # --- NUOVI ARGOMENTI ---
     parser.add_argument('--new_commit_hash', default='main',
                        help='Git commit hash NUOVO (es. github.sha)')
-    parser.add_argument('--old_commit_hash', default='main~1',
-                       help='Git commit hash VECCHIO (es. github.event.before)')
     parser.add_argument('--git_repo', default='https://github.com/vincenzo426/MLOpsRepo.git',
                        help='URL del repository Git')
     parser.add_argument('--minio_access_key', required=True,
@@ -215,7 +213,6 @@ def main():
                 verision_pipeline,
                 args.git_repo,
                 args.new_commit_hash, # Passa il nuovo hash
-                args.old_commit_hash, # Passa il vecchio hash
                 args.minio_access_key, # Passa la chiave
                 args.minio_secret_key  # Passa il segreto
             )

@@ -70,7 +70,6 @@ jobs:
           echo "Azione: Upload e Run dell'ultima versione compilata..."
           python run_kubeflow_pipeline.py --upload --run \
             --new_commit_hash ${{ github.sha }} \
-            --old_commit_hash ${{ github.event.before }} \
             --minio_access_key ${{ secrets.MINIO_ACCESS_KEY }} \
             --minio_secret_key ${{ secrets.MINIO_SECRET_KEY }}
 
@@ -91,6 +90,5 @@ jobs:
           python run_kubeflow_pipeline.py --upload --run \
             --git_repo ${{ github.repositoryUrl }} \
             --new_commit_hash ${{ github.sha }} \
-            --old_commit_hash ${{ github.event.before }} \
             --minio_access_key ${{ secrets.MINIO_ACCESS_KEY }} \
             --minio_secret_key ${{ secrets.MINIO_SECRET_KEY }}
