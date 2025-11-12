@@ -132,12 +132,17 @@ def download_from_minio(
                 elif isinstance(item, str) and not item.endswith('/'):
                     all_changed_files.append(item)
                     print(f"  - Aggiunto (stringa): {item}")
+    
+    # Dopo il loop che popola all_changed_files, aggiungi:
+    print(f"DEBUG: all_changed_files = {all_changed_files}")
 
-    # Filtra solo i file nel nostro path di dati
     files_to_pull = [
         f for f in all_changed_files 
         if f.startswith(dvc_data_path_in_repo)
     ]
+
+    print(f"DEBUG: files_to_pull dopo filtraggio = {files_to_pull}")
+    print(f"DEBUG: dvc_data_path_in_repo = {dvc_data_path_in_repo}")
 
     if not files_to_pull:
         print("✓ Nessun file di dati modificato. La pipeline non processerà nulla.")
