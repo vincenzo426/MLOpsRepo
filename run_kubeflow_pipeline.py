@@ -148,6 +148,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, ver
                 experiment_id=experiment_id,
                 job_name=run_name, 
                 pipeline_id=pipeline_id,
+                version_id=None,
                 params=arguments
             )
         else:
