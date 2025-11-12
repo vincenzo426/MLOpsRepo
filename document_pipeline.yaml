@@ -339,8 +339,7 @@ root:
         taskInfo:
           name: create-embeddings
       download-from-minio:
-        cachingOptions:
-          enableCache: true
+        cachingOptions: {}
         componentRef:
           name: comp-download-from-minio
         inputs:

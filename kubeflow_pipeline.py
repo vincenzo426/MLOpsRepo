@@ -251,7 +251,7 @@ def document_processing_pipeline(
         minio_endpoint=minio_endpoint,
         access_key=minio_access_key,
         secret_key=minio_secret_key
-    )
+    ).set_caching_options(enable_caching=False)
     
     chunk_task = chunk_documents(
         documents=download_task.outputs['output_dataset'],
