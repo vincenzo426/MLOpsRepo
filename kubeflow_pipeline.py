@@ -26,12 +26,15 @@ def download_from_minio(
 ):
     """
     Componente KFP per clonare un repo, trovare i file DVC modificati
-    tra due commit (delta), scaricare solo quelli e passarli in output.
-    Le credenziali MinIO sono passate come parametri (NON SICURO).
+    tra due commit (delta usando --json), scaricare solo quelli e passarli in output.
     """
     import sys
     import subprocess
+    import json  # Assicurati che json sia importato
     import os
+    import shutil
+    from distutils.dir_util import copy_tree
+
     # Funzione helper per eseguire comandi
     def run_command(command: list, return_stdout=False):
         print(f"Esecuzione: {' '.join(command)}")
@@ -44,12 +47,18 @@ def download_from_minio(
                 text=True,
                 encoding='utf-8'
             )
-            print("STDOUT:", process.stdout)
+            # Stampa sempre STDERR se non è vuoto
             if process.stderr:
                 print("STDERR:", process.stderr)
+            
+            # Stampa STDOUT solo se non stiamo cercando di catturarlo
+            if not return_stdout:
+                print("STDOUT:", process.stdout)
+                
             if return_stdout:
                 return process.stdout
         except subprocess.CalledProcessError as e:
+            # Se il comando fallisce, stampa tutto
             print(f"Errore durante l'esecuzione di: {' '.join(e.cmd)}")
             print("STDOUT:", e.stdout)
             print("STDERR:", e.stderr)
@@ -77,19 +86,46 @@ def download_from_minio(
     run_command(["dvc", "remote", "modify", "--local", dvc_remote_name, "secret_access_key", minio_secret_key])
     run_command(["dvc", "remote", "modify", "--local", dvc_remote_name, "use_ssl", "false"])
 
-    # 4. Logica "Delta" (dvc diff)
-    print(f"Calcolo del delta tra {old_commit_hash} e {new_commit_hash}...")
+    # 4. Logica "Delta" (dvc diff) -- MODIFICATA PER USARE --json
+    print(f"Calcolo del delta (formato JSON) tra {old_commit_hash} e {new_commit_hash}...")
     
     # Assicura che anche il vecchio commit sia "fetchato" per poter fare il diff
     run_command(["git", "fetch", "origin", old_commit_hash])
 
-    diff_output = run_command(
-        ["dvc", "diff", "--name-only", old_commit_hash, new_commit_hash],
-        return_stdout=True
-    )
-    
+    diff_output_json = ""
+    try:
+        # USA --json INVECE DI --name-only
+        diff_output_json = run_command(
+            ["dvc", "diff", "--json", old_commit_hash, new_commit_hash],
+            return_stdout=True
+        )
+        # Se l'output è vuoto, inizializza come JSON vuoto
+        if not diff_output_json:
+            diff_data = {}
+        else:
+            diff_data = json.loads(diff_output_json)
+            
+    except subprocess.CalledProcessError as e:
+        # dvc diff può restituire un errore se non ci sono modifiche DVC,
+        # trattiamo questo come "nessuna modifica".
+        print(f"dvc diff ha fallito (probabilmente nessuna modifica DVC): {e.stderr}")
+        diff_data = {}
+    except json.JSONDecodeError:
+        print(f"Impossibile parsare l'output JSON di dvc diff: {diff_output_json}")
+        diff_data = {}
+        
+    all_changed_files = []
+    # Estrai i percorsi da 'added' e 'modified'
+    # In DVC 3, i file sono in un dizionario 'diff'
+    if 'diff' in diff_data:
+        for state in ['added', 'modified']:
+            if state in diff_data['diff']:
+                for item in diff_data['diff'][state]:
+                    # Il percorso è ora in item['path']
+                    if 'path' in item:
+                        all_changed_files.append(item['path'])
+
     # Filtra solo i file nel nostro path di dati
-    all_changed_files = diff_output.splitlines() if diff_output else []
     files_to_pull = [
         f for f in all_changed_files 
         if f.startswith(dvc_data_path_in_repo)
@@ -97,28 +133,28 @@ def download_from_minio(
 
     if not files_to_pull:
         print("✓ Nessun file di dati modificato. La pipeline non processerà nulla.")
-        # Non creiamo file, il prossimo step (chunking) riceverà una dir vuota
         return
 
     print(f"File modificati trovati ({len(files_to_pull)}): \n{files_to_pull}")
 
     # 5. Scarica *solo* i file modificati
     print("Scaricamento solo dei file modificati...")
-    run_command(["dvc", "pull"] + files_to_pull)
+    # Dobbiamo passare i file .dvc corrispondenti, non i file raw
+    # Ma `dvc pull` è abbastanza intelligente da gestire i path diretti
+    run_command(["dvc", "pull", "--allow-missing"] + files_to_pull)
 
     # 6. Copia *solo* i file modificati nell'Output[Path] di KFP
-    # Mantenendo la loro struttura di cartelle
     print(f"Copia dei file modificati in {output_dataset.path}...")
     copied_count = 0
     for file_in_repo in files_to_pull:
         source_path = os.path.join(WORKDIR, file_in_repo)
         
-        # Gestisce il caso in cui il diff elenchi una cartella ma noi vogliamo i file
         if os.path.isdir(source_path):
-            continue
+            continue # Ignora le directory, ci interessano i file
 
         # Crea la stessa struttura di cartelle nell'output
-        relative_path = os.path.relpath(source_path, os.path.join(WORKDIR, dvc_data_path_in_repo))
+        # Assicurati che il path relativo sia corretto
+        relative_path = os.path.relpath(source_path, WORKDIR)
         target_path = os.path.join(output_dataset.path, relative_path)
         
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -126,8 +162,6 @@ def download_from_minio(
         copied_count += 1
         
     print(f"✓ Copiati {copied_count} file modificati.")
-
-
 # ----------------------------------------------------------------------------
 # COMPONENTI INVARIATI (chunk_documents, create_embeddings, upload_to_qdrant)
 # ----------------------------------------------------------------------------
@@ -361,7 +395,7 @@ def upload_to_qdrant(
 )
 def document_processing_pipeline(
     # Parametri per il download (MODIFICATI)
-    git_repo_url: str,
+    git_repo_url: str = 'https://github.com/vincenzo426/MLOpsRepo',
     new_commit_hash: str = 'main',
     old_commit_hash: str = 'main', # Default (processa tutto la prima volta)
     dvc_remote_name: str = 'myminio',
