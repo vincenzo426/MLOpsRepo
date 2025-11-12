@@ -6,7 +6,8 @@ on:
       - 'data/documents.dvc'
       - 'kubeflow_pipeline.py'
     branches:
-      - main, development
+      - main
+      - development
 
 jobs:
   pipeline-workflow:
