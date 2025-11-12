@@ -178,7 +178,6 @@ def main():
     print(f"📦 Namespace: {KUBEFLOW_NAMESPACE}")
     print(f"🔗 Git Repo:  {args.git_repo}")
     print(f"🔑 Git Commit (Nuovo): {args.new_commit_hash}")
-    print(f"🔑 Git Commit (Vecchio): {args.old_commit_hash}")
     print(f"🔒 MinIO Key:  {'*' * len(args.minio_access_key)}")
     
     # ... (il resto della funzione main con connessione, get_experiment, etc.
