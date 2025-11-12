@@ -5,42 +5,49 @@ import kfp
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["boto3==1.34.0", "minio==7.2.0"]
+    packages_to_install=["dvc==3.48.0", "dvc-s3==3.2.0", "gitpython"]
 )
 def download_from_minio(
-    bucket_name: str,
+    git_repo_url: str,
+    git_branch: str,
     minio_endpoint: str,
     access_key: str,
     secret_key: str,
     output_dataset: Output[Dataset]
 ):
-    from minio import Minio
     import os
+    import shutil
+    import subprocess
     
-    client = Minio(
-        minio_endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=False
-    )
+    # Clone del repository
+    repo_dir = "/tmp/repo"
+    subprocess.run(["git", "clone", "-b", git_branch, git_repo_url, repo_dir], check=True)
     
+    os.chdir(repo_dir)
+    
+    # Configura credenziali MinIO per DVC
+    subprocess.run(["dvc", "remote", "modify", "myminio", "access_key_id", access_key], check=True)
+    subprocess.run(["dvc", "remote", "modify", "myminio", "secret_access_key", secret_key], check=True)
+    subprocess.run(["dvc", "remote", "modify", "myminio", "endpointurl", f"http://{minio_endpoint}"], check=True)
+    
+    # DVC pull
+    subprocess.run(["dvc", "pull"], check=True)
+    
+    # Copia i documenti scaricati nell'output
+    docs_path = os.path.join(repo_dir, "data/documents")
     os.makedirs(output_dataset.path, exist_ok=True)
     
-    objects = client.list_objects(bucket_name, recursive=True)
-    for obj in objects:
-        target_path = os.path.join(output_dataset.path, obj.object_name)
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        
-        client.fget_object(
-            bucket_name,
-            obj.object_name,
-            target_path
-        )
+    for item in os.listdir(docs_path):
+        src = os.path.join(docs_path, item)
+        dst = os.path.join(output_dataset.path, item)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
     
-    print(f"Downloaded files to {output_dataset.path}")
-    output_dataset.metadata["bucket"] = bucket_name
-    output_dataset.metadata["file_count"] = len(list(client.list_objects(bucket_name, recursive=True)))
-
+    file_count = len([f for f in os.listdir(output_dataset.path) if os.path.isfile(os.path.join(output_dataset.path, f))])
+    output_dataset.metadata["file_count"] = file_count
+    print(f"✓ DVC pull completato: {file_count} files")
 
 @dsl.component(
     base_image="python:3.10",
@@ -239,7 +246,8 @@ def document_processing_pipeline(
     vector_size: int = 384
 ):
     download_task = download_from_minio(
-        bucket_name=minio_bucket,
+        git_repo_url='https://github.com/vincenzo426/MLOpsRepo',  # Inserisci URL del tuo repo
+        git_branch='main',
         minio_endpoint=minio_endpoint,
         access_key=minio_access_key,
         secret_key=minio_secret_key
