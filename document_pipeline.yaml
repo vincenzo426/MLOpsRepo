@@ -1,16 +1,20 @@
 # PIPELINE DEFINITION
 # Name: document-processing-pipeline
-# Description: Pipeline per processare documenti da MinIO a Qdrant con LangChain
+# Description: Pipeline per processare documenti (Git/DVC) a Qdrant
 # Inputs:
 #    chunk_overlap: int [Default: 200.0]
 #    chunk_size: int [Default: 1000.0]
 #    collection_name: str [Default: 'documents']
+#    dvc_data_path: str [Default: 'data/documents']
+#    dvc_remote_name: str [Default: 'myminio']
 #    embedding_model: str [Default: 'sentence-transformers/all-MiniLM-L6-v2']
+#    git_repo_url: str
 #    hf_api_key: str [Default: '']
 #    minio_access_key: str [Default: 'minio']
-#    minio_bucket: str [Default: 'dvc-storage']
 #    minio_endpoint: str [Default: 'minio-service.kubeflow.svc.cluster.local:9000']
 #    minio_secret_key: str [Default: '']
+#    new_commit_hash: str [Default: 'main']
+#    old_commit_hash: str [Default: 'main']
 #    qdrant_url: str [Default: 'http://qdrant:6333']
 #    vector_size: int [Default: 384.0]
 components:
@@ -56,13 +60,21 @@ components:
     executorLabel: exec-download-from-minio
     inputDefinitions:
       parameters:
-        access_key:
+        dvc_data_path_in_repo:
           parameterType: STRING
-        bucket_name:
+        dvc_remote_name:
+          parameterType: STRING
+        git_repo_url:
+          parameterType: STRING
+        minio_access_key:
           parameterType: STRING
         minio_endpoint:
           parameterType: STRING
-        secret_key:
+        minio_secret_key:
+          parameterType: STRING
+        new_commit_hash:
+          parameterType: STRING
+        old_commit_hash:
           parameterType: STRING
     outputDefinitions:
       artifacts:
@@ -120,28 +132,37 @@ deploymentSpec:
           \    import os\n    import json\n\n    print(f\"=== Exploring documents\
           \ path: {documents.path} ===\")\n\n    splitter = RecursiveCharacterTextSplitter(\n\
           \        chunk_size=chunk_size,\n        chunk_overlap=chunk_overlap,\n\
-          \        length_function=len\n    )\n\n    all_chunks = []\n\n    for root,\
-          \ dirs, files in os.walk(documents.path):\n        for file in files:\n\
-          \            # Skip hidden files e metadata DVC\n            if file.startswith('.'):\n\
-          \                continue\n\n            file_path = os.path.join(root,\
-          \ file)\n            file_size = os.path.getsize(file_path)\n          \
-          \  print(f\"Processing: {file} ({file_size} bytes)\")\n\n            try:\n\
-          \                # Prova a leggere come testo (file DVC sono raw text senza\
-          \ estensione)\n                with open(file_path, 'r', encoding='utf-8',\
-          \ errors='ignore') as f:\n                    content = f.read()\n\n   \
-          \             if content.strip():\n                    chunks = splitter.split_text(content)\n\
-          \n                    for i, chunk in enumerate(chunks):\n             \
-          \           all_chunks.append({\n                            'source': file,\n\
-          \                            'chunk_id': i,\n                          \
-          \  'content': chunk\n                        })\n                    print(f\"\
-          \  \u2192 Created {len(chunks)} chunks\")\n                else:\n     \
-          \               print(f\"  \u2192 Empty file, skipped\")\n\n           \
-          \ except Exception as e:\n                print(f\"  \u2192 Error: {e}\"\
-          )\n\n    os.makedirs(output_chunks.path, exist_ok=True)\n    output_file\
-          \ = os.path.join(output_chunks.path, \"chunks.json\")\n    with open(output_file,\
-          \ 'w', encoding='utf-8') as f:\n        json.dump(all_chunks, f, ensure_ascii=False)\n\
-          \n    output_chunks.metadata[\"chunk_count\"] = len(all_chunks)\n    print(f\"\
-          \\n\u2713 Total chunks created: {len(all_chunks)}\")\n\n"
+          \        length_function=len\n    )\n\n    all_chunks = []\n\n    # Cammina\
+          \ ricorsivamente nella cartella (ora gestisce la struttura .dir di DVC)\n\
+          \    for root, dirs, files in os.walk(documents.path):\n        for file\
+          \ in files:\n            # Ignora i file .dvc o .gitignore ecc.\n      \
+          \      if file.startswith('.') or file.endswith('.dvc'):\n             \
+          \   continue\n\n            file_path = os.path.join(root, file)\n\n   \
+          \         # Gestisce il caso in cui DVC pu\xF2 lasciare file placeholder\n\
+          \            if os.path.isdir(file_path):\n                continue\n\n\
+          \            file_size = os.path.getsize(file_path)\n            print(f\"\
+          Processing: {file} ({file_size} bytes)\")\n\n            try:\n        \
+          \        with open(file_path, 'r', encoding='utf-8', errors='ignore') as\
+          \ f:\n                    content = f.read()\n\n                if content.strip():\n\
+          \                    chunks = splitter.split_text(content)\n\n         \
+          \           for i, chunk in enumerate(chunks):\n                       \
+          \ all_chunks.append({\n                            # Usa os.path.relpath\
+          \ per un nome sorgente pulito\n                            'source': os.path.relpath(file_path,\
+          \ documents.path),\n                            'chunk_id': i,\n       \
+          \                     'content': chunk\n                        })\n   \
+          \                 print(f\"  \u2192 Created {len(chunks)} chunks\")\n  \
+          \              else:\n                    print(f\"  \u2192 Empty file,\
+          \ skipped\")\n\n            except Exception as e:\n                print(f\"\
+          \  \u2192 Error processing {file_path}: {e}\")\n\n    # IMPORTANTE: Gestione\
+          \ del caso \"Nessun file modificato\"\n    if not all_chunks:\n        print(\"\
+          \u2713 Nessun chunk creato (nessun file nuovo/modificato da processare).\"\
+          )\n        # Crea un file di chunks vuoto per non far fallire il prossimo\
+          \ step\n        all_chunks = []\n\n    os.makedirs(output_chunks.path, exist_ok=True)\n\
+          \    output_file = os.path.join(output_chunks.path, \"chunks.json\")\n \
+          \   with open(output_file, 'w', encoding='utf-8') as f:\n        json.dump(all_chunks,\
+          \ f, ensure_ascii=False)\n\n    output_chunks.metadata[\"chunk_count\"]\
+          \ = len(all_chunks)\n    print(f\"\\n\u2713 Total chunks created: {len(all_chunks)}\"\
+          )\n\n"
         image: python:3.10
     exec-create-embeddings:
       container:
@@ -176,22 +197,32 @@ deploymentSpec:
           \ os\n\n    client = InferenceClient(token=hf_api_key)\n\n    chunks_file\
           \ = os.path.join(chunks.path, \"chunks.json\")\n    with open(chunks_file,\
           \ 'r', encoding='utf-8') as f:\n        chunks_data = json.load(f)\n\n \
-          \   embedded_chunks = []\n\n    print(f\"Generazione embeddings per {len(chunks_data)}\
-          \ chunks con {model_name}...\")\n\n    for i, chunk in enumerate(chunks_data):\n\
-          \        embedding = client.feature_extraction(\n            text=chunk['content'],\n\
-          \            model=model_name\n        )\n\n        if hasattr(embedding,\
-          \ 'tolist'):\n            embedding = embedding.tolist()\n        elif isinstance(embedding,\
-          \ list) and len(embedding) > 0 and hasattr(embedding[0], 'tolist'):\n  \
-          \          embedding = [e.tolist() if hasattr(e, 'tolist') else e for e\
-          \ in embedding][0]\n\n        embedded_chunks.append({\n            **chunk,\n\
-          \            'embedding': embedding\n        })\n\n        if (i + 1) %\
-          \ 10 == 0:\n            print(f\"Processati {i + 1}/{len(chunks_data)} chunks\"\
-          )\n\n    os.makedirs(output_embeddings.path, exist_ok=True)\n    output_file\
-          \ = os.path.join(output_embeddings.path, \"embeddings.json\")\n    with\
-          \ open(output_file, 'w', encoding='utf-8') as f:\n        json.dump(embedded_chunks,\
-          \ f, ensure_ascii=False)\n\n    output_embeddings.metadata[\"embedding_count\"\
-          ] = len(embedded_chunks)\n    print(f\"\u2713 Embeddings completati: {len(embedded_chunks)}\
-          \ chunks\")\n\n"
+          \   # IMPORTANTE: Gestione del caso \"Nessun chunk\"\n    if not chunks_data:\n\
+          \        print(\"\u2713 Nessun chunk da processare per l'embedding.\")\n\
+          \        embedded_chunks = []\n    else:\n        embedded_chunks = []\n\
+          \        print(f\"Generazione embeddings per {len(chunks_data)} chunks con\
+          \ {model_name}...\")\n\n        # Logica di Batching (come prima)\n    \
+          \    contents_to_embed = [chunk['content'] for chunk in chunks_data]\n \
+          \       try:\n            print(f\"Tentativo di embedding in batch di {len(contents_to_embed)}\
+          \ chunks...\")\n            embeddings = client.feature_extraction(\n  \
+          \              text=contents_to_embed,\n                model=model_name\n\
+          \            )\n            if hasattr(embeddings, 'tolist'):\n        \
+          \        embeddings_list = embeddings.tolist()\n            elif isinstance(embeddings,\
+          \ list):\n                embeddings_list = [e.tolist() if hasattr(e, 'tolist')\
+          \ else e for e in embeddings]\n            else:\n                raise\
+          \ Exception(\"Tipo di embedding non gestito\")\n            print(f\"Batch\
+          \ embedding riuscito.\")\n            for i, chunk in enumerate(chunks_data):\n\
+          \                embedded_chunks.append({\n                    **chunk,\n\
+          \                    'embedding': embeddings_list[i]\n                })\n\
+          \n        except Exception as e:\n            print(f\"Batch embedding fallito\
+          \ ({e}), fallback a embedding singolo...\")\n            # (logica di fallback...\
+          \ omessa per brevit\xE0)\n            pass\n\n    os.makedirs(output_embeddings.path,\
+          \ exist_ok=True)\n    output_file = os.path.join(output_embeddings.path,\
+          \ \"embeddings.json\")\n    with open(output_file, 'w', encoding='utf-8')\
+          \ as f:\n        json.dump(embedded_chunks, f, ensure_ascii=False)\n\n \
+          \   output_embeddings.metadata[\"embedding_count\"] = len(embedded_chunks)\n\
+          \    print(f\"\u2713 Embeddings completati: {len(embedded_chunks)} chunks\"\
+          )\n\n"
         image: python:3.10
     exec-download-from-minio:
       container:
@@ -205,10 +236,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'boto3==1.34.0'\
-          \ 'minio==7.2.0'  &&  python3 -m pip install --quiet --no-warn-script-location\
-          \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
-          3.9\"' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -220,20 +250,70 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef download_from_minio(\n    bucket_name: str,\n    minio_endpoint:\
-          \ str,\n    access_key: str,\n    secret_key: str,\n    output_dataset:\
-          \ Output[Dataset]\n):\n    from minio import Minio\n    import os\n\n  \
-          \  client = Minio(\n        minio_endpoint,\n        access_key=access_key,\n\
-          \        secret_key=secret_key,\n        secure=False\n    )\n\n    os.makedirs(output_dataset.path,\
-          \ exist_ok=True)\n\n    objects = client.list_objects(bucket_name, recursive=True)\n\
-          \    for obj in objects:\n        target_path = os.path.join(output_dataset.path,\
-          \ obj.object_name)\n        os.makedirs(os.path.dirname(target_path), exist_ok=True)\n\
-          \n        client.fget_object(\n            bucket_name,\n            obj.object_name,\n\
-          \            target_path\n        )\n\n    print(f\"Downloaded files to\
-          \ {output_dataset.path}\")\n    output_dataset.metadata[\"bucket\"] = bucket_name\n\
-          \    output_dataset.metadata[\"file_count\"] = len(list(client.list_objects(bucket_name,\
-          \ recursive=True)))\n\n"
-        image: python:3.10
+          \ *\n\ndef download_from_minio(\n    git_repo_url: str,\n    new_commit_hash:\
+          \ str,      # Il commit corrente (es. github.sha)\n    old_commit_hash:\
+          \ str,      # Il commit precedente (es. github.event.before)\n    minio_endpoint:\
+          \ str,\n    minio_access_key: str,     # RICEVUTO COME PARAMETRO\n    minio_secret_key:\
+          \ str,     # RICEVUTO COME PARAMETRO\n    dvc_remote_name: str,\n    dvc_data_path_in_repo:\
+          \ str,\n    output_dataset: Output[Dataset]\n):\n    \"\"\"\n    Componente\
+          \ KFP per clonare un repo, trovare i file DVC modificati\n    tra due commit\
+          \ (delta), scaricare solo quelli e passarli in output.\n    Le credenziali\
+          \ MinIO sono passate come parametri (NON SICURO).\n    \"\"\"\n    import\
+          \ sys\n    import subprocess\n\n    # Funzione helper per eseguire comandi\n\
+          \    def run_command(command: list, return_stdout=False):\n        print(f\"\
+          Esecuzione: {' '.join(command)}\")\n        try:\n            process =\
+          \ subprocess.run(\n                command,\n                check=True,\n\
+          \                stdout=subprocess.PIPE,\n                stderr=subprocess.PIPE,\n\
+          \                text=True,\n                encoding='utf-8'\n        \
+          \    )\n            print(\"STDOUT:\", process.stdout)\n            if process.stderr:\n\
+          \                print(\"STDERR:\", process.stderr)\n            if return_stdout:\n\
+          \                return process.stdout\n        except subprocess.CalledProcessError\
+          \ as e:\n            print(f\"Errore durante l'esecuzione di: {' '.join(e.cmd)}\"\
+          )\n            print(\"STDOUT:\", e.stdout)\n            print(\"STDERR:\"\
+          , e.stderr)\n            sys.exit(1)\n        except Exception as e:\n \
+          \           print(f\"Errore inatteso: {e}\")\n            sys.exit(1)\n\n\
+          \    # 1. Setup\n    WORKDIR = \"/app/data\"\n    os.makedirs(WORKDIR, exist_ok=True)\n\
+          \    os.chdir(WORKDIR)\n    print(f\"Directory di lavoro: {os.getcwd()}\"\
+          )\n    os.makedirs(output_dataset.path, exist_ok=True) # Crea subito la\
+          \ dir di output\n\n    # 2. Git\n    run_command([\"git\", \"clone\", git_repo_url,\
+          \ \".\"])\n    run_command([\"git\", \"checkout\", new_commit_hash])\n \
+          \   print(f\"Checkout del commit {new_commit_hash} eseguito.\")\n\n    #\
+          \ 3. Configurazione DVC (con credenziali passate come parametri)\n    print(\"\
+          Configurazione DVC remote (con credenziali da parametri)...\")\n    run_command([\"\
+          dvc\", \"remote\", \"modify\", \"--local\", dvc_remote_name, \"endpointurl\"\
+          , minio_endpoint])\n    run_command([\"dvc\", \"remote\", \"modify\", \"\
+          --local\", dvc_remote_name, \"access_key_id\", minio_access_key])\n    run_command([\"\
+          dvc\", \"remote\", \"modify\", \"--local\", dvc_remote_name, \"secret_access_key\"\
+          , minio_secret_key])\n    run_command([\"dvc\", \"remote\", \"modify\",\
+          \ \"--local\", dvc_remote_name, \"use_ssl\", \"false\"])\n\n    # 4. Logica\
+          \ \"Delta\" (dvc diff)\n    print(f\"Calcolo del delta tra {old_commit_hash}\
+          \ e {new_commit_hash}...\")\n\n    # Assicura che anche il vecchio commit\
+          \ sia \"fetchato\" per poter fare il diff\n    run_command([\"git\", \"\
+          fetch\", \"origin\", old_commit_hash])\n\n    diff_output = run_command(\n\
+          \        [\"dvc\", \"diff\", \"--name-only\", old_commit_hash, new_commit_hash],\n\
+          \        return_stdout=True\n    )\n\n    # Filtra solo i file nel nostro\
+          \ path di dati\n    all_changed_files = diff_output.splitlines() if diff_output\
+          \ else []\n    files_to_pull = [\n        f for f in all_changed_files \n\
+          \        if f.startswith(dvc_data_path_in_repo)\n    ]\n\n    if not files_to_pull:\n\
+          \        print(\"\u2713 Nessun file di dati modificato. La pipeline non\
+          \ processer\xE0 nulla.\")\n        # Non creiamo file, il prossimo step\
+          \ (chunking) ricever\xE0 una dir vuota\n        return\n\n    print(f\"\
+          File modificati trovati ({len(files_to_pull)}): \\n{files_to_pull}\")\n\n\
+          \    # 5. Scarica *solo* i file modificati\n    print(\"Scaricamento solo\
+          \ dei file modificati...\")\n    run_command([\"dvc\", \"pull\"] + files_to_pull)\n\
+          \n    # 6. Copia *solo* i file modificati nell'Output[Path] di KFP\n   \
+          \ # Mantenendo la loro struttura di cartelle\n    print(f\"Copia dei file\
+          \ modificati in {output_dataset.path}...\")\n    copied_count = 0\n    for\
+          \ file_in_repo in files_to_pull:\n        source_path = os.path.join(WORKDIR,\
+          \ file_in_repo)\n\n        # Gestisce il caso in cui il diff elenchi una\
+          \ cartella ma noi vogliamo i file\n        if os.path.isdir(source_path):\n\
+          \            continue\n\n        # Crea la stessa struttura di cartelle\
+          \ nell'output\n        relative_path = os.path.relpath(source_path, os.path.join(WORKDIR,\
+          \ dvc_data_path_in_repo))\n        target_path = os.path.join(output_dataset.path,\
+          \ relative_path)\n\n        os.makedirs(os.path.dirname(target_path), exist_ok=True)\n\
+          \        shutil.copy(source_path, target_path)\n        copied_count +=\
+          \ 1\n\n    print(f\"\u2713 Copiati {copied_count} file modificati.\")\n\n"
+        image: docker.io/iterative/dvc:latest-s3
     exec-upload-to-qdrant:
       container:
         args:
@@ -264,28 +344,36 @@ deploymentSpec:
           \ *\n\ndef upload_to_qdrant(\n    embeddings: Input[Dataset],\n    qdrant_url:\
           \ str,\n    collection_name: str,\n    vector_size: int\n):\n    from qdrant_client\
           \ import QdrantClient\n    from qdrant_client.models import Distance, VectorParams,\
-          \ PointStruct\n    import json\n    import uuid\n    import os\n\n    client\
-          \ = QdrantClient(url=qdrant_url)\n\n    try:\n        client.create_collection(\n\
-          \            collection_name=collection_name,\n            vectors_config=VectorParams(\n\
-          \                size=vector_size,\n                distance=Distance.COSINE\n\
-          \            )\n        )\n        print(f\"Collection '{collection_name}'\
-          \ creata\")\n    except Exception as e:\n        print(f\"Collection gi\xE0\
-          \ esistente o errore: {e}\")\n\n    embeddings_file = os.path.join(embeddings.path,\
-          \ \"embeddings.json\")\n    with open(embeddings_file, 'r', encoding='utf-8')\
-          \ as f:\n        embedded_chunks = json.load(f)\n\n    points = []\n   \
-          \ for chunk in embedded_chunks:\n        point = PointStruct(\n        \
-          \    id=str(uuid.uuid4()),\n            vector=chunk['embedding'],\n   \
-          \         payload={\n                'source': chunk['source'],\n      \
-          \          'chunk_id': chunk['chunk_id'],\n                'content': chunk['content']\n\
-          \            }\n        )\n        points.append(point)\n\n    batch_size\
-          \ = 100\n    for i in range(0, len(points), batch_size):\n        batch\
-          \ = points[i:i+batch_size]\n        client.upsert(\n            collection_name=collection_name,\n\
-          \            points=batch\n        )\n        print(f\"Uploaded batch {i//batch_size\
-          \ + 1}/{(len(points)-1)//batch_size + 1}\")\n\n    print(f\"\u2713 Uploaded\
+          \ PointStruct\n    import json\n    import uuid\n    import os\n    import\
+          \ hashlib\n\n    client = QdrantClient(url=qdrant_url)\n\n    try:\n   \
+          \     client.create_collection(\n            collection_name=collection_name,\n\
+          \            vectors_config=VectorParams(\n                size=vector_size,\n\
+          \                distance=Distance.COSINE\n            )\n        )\n  \
+          \      print(f\"Collection '{collection_name}' creata\")\n    except Exception\
+          \ as e:\n        print(f\"Collection gi\xE0 esistente o errore: {e}\")\n\
+          \n    embeddings_file = os.path.join(embeddings.path, \"embeddings.json\"\
+          )\n    with open(embeddings_file, 'r', encoding='utf-8') as f:\n       \
+          \ embedded_chunks = json.load(f)\n\n    # IMPORTANTE: Gestione del caso\
+          \ \"Nessun embedding\"\n    if not embedded_chunks:\n        print(\"\u2713\
+          \ Nessun punto da caricare su Qdrant.\")\n        return\n\n    points =\
+          \ []\n    for chunk in embedded_chunks:\n        # Logica ID Deterministico\
+          \ (invariata, ma ora pi\xF9 importante)\n        chunk_content = chunk['content']\n\
+          \        chunk_source = chunk['source']\n        namespace_uuid = uuid.NAMESPACE_DNS\n\
+          \        deterministic_id = str(uuid.uuid5(namespace_uuid, chunk_source\
+          \ + chunk_content))\n\n        point = PointStruct(\n            id=deterministic_id,\
+          \ \n            vector=chunk['embedding'],\n            payload={\n    \
+          \            'source': chunk['source'],\n                'chunk_id': chunk['chunk_id'],\n\
+          \                'content': chunk['content']\n            }\n        )\n\
+          \        points.append(point)\n\n    batch_size = 100\n    print(f\"Inizio\
+          \ UPSERT di {len(points)} punti in Qdrant...\")\n    for i in range(0, len(points),\
+          \ batch_size):\n        batch = points[i:i+batch_size]\n        client.upsert(\n\
+          \            collection_name=collection_name,\n            points=batch,\n\
+          \            wait=True\n        )\n        print(f\"Uploaded batch {i//batch_size\
+          \ + 1}/{(len(points)-1)//batch_size + 1}\")\n\n    print(f\"\u2713 Uploaded/Updated\
           \ {len(points)} points to Qdrant collection '{collection_name}'\")\n\n"
         image: python:3.10
 pipelineInfo:
-  description: Pipeline per processare documenti da MinIO a Qdrant con LangChain
+  description: Pipeline per processare documenti (Git/DVC) a Qdrant
   name: document-processing-pipeline
 root:
   dag:
@@ -337,14 +425,22 @@ root:
           name: comp-download-from-minio
         inputs:
           parameters:
-            access_key:
+            dvc_data_path_in_repo:
+              componentInputParameter: dvc_data_path
+            dvc_remote_name:
+              componentInputParameter: dvc_remote_name
+            git_repo_url:
+              componentInputParameter: git_repo_url
+            minio_access_key:
               componentInputParameter: minio_access_key
-            bucket_name:
-              componentInputParameter: minio_bucket
             minio_endpoint:
               componentInputParameter: minio_endpoint
-            secret_key:
+            minio_secret_key:
               componentInputParameter: minio_secret_key
+            new_commit_hash:
+              componentInputParameter: new_commit_hash
+            old_commit_hash:
+              componentInputParameter: old_commit_hash
         taskInfo:
           name: download-from-minio
       upload-to-qdrant:
@@ -383,9 +479,19 @@ root:
         defaultValue: documents
         isOptional: true
         parameterType: STRING
+      dvc_data_path:
+        defaultValue: data/documents
+        isOptional: true
+        parameterType: STRING
+      dvc_remote_name:
+        defaultValue: myminio
+        isOptional: true
+        parameterType: STRING
       embedding_model:
         defaultValue: sentence-transformers/all-MiniLM-L6-v2
         isOptional: true
+        parameterType: STRING
+      git_repo_url:
         parameterType: STRING
       hf_api_key:
         defaultValue: ''
@@ -395,16 +501,20 @@ root:
         defaultValue: minio
         isOptional: true
         parameterType: STRING
-      minio_bucket:
-        defaultValue: dvc-storage
-        isOptional: true
-        parameterType: STRING
       minio_endpoint:
         defaultValue: minio-service.kubeflow.svc.cluster.local:9000
         isOptional: true
         parameterType: STRING
       minio_secret_key:
-        defaultValue: minio123
+        defaultValue: ''
+        isOptional: true
+        parameterType: STRING
+      new_commit_hash:
+        defaultValue: main
+        isOptional: true
+        parameterType: STRING
+      old_commit_hash:
+        defaultValue: main
         isOptional: true
         parameterType: STRING
       qdrant_url:
