@@ -308,14 +308,19 @@ deploymentSpec:
           \        diff_data = {}\n    except json.JSONDecodeError:\n        print(f\"\
           Impossibile parsare l'output JSON di dvc diff: {diff_output_json}\")\n \
           \       diff_data = {}\n\n    all_changed_files = []\n    # Estrai i percorsi\
-          \ da 'added' e 'modified'\n    # In DVC 3, i file sono in un dizionario\
-          \ 'diff'\n    if 'diff' in diff_data:\n        for state in ['added', 'modified']:\n\
-          \            if state in diff_data['diff']:\n                for item in\
-          \ diff_data['diff'][state]:\n                    # Il percorso \xE8 ora\
-          \ in item['path']\n                    if 'path' in item:\n            \
-          \            all_changed_files.append(item['path'])\n\n    # Filtra solo\
-          \ i file nel nostro path di dati\n    files_to_pull = [\n        f for f\
-          \ in all_changed_files \n        if f.startswith(dvc_data_path_in_repo)\n\
+          \ da 'added' e 'modified'\n    # Il JSON restituito da dvc diff ha la struttura:\
+          \ {\"added\": [...], \"modified\": [...], ...}\n    for state in ['added',\
+          \ 'modified']:\n        if state in diff_data:\n            for item in\
+          \ diff_data[state]:\n                # Il percorso \xE8 in item['path']\n\
+          \                if isinstance(item, dict) and 'path' in item:\n       \
+          \             path = item['path']\n                    # Ignora le directory\
+          \ (terminano con /)\n                    if not path.endswith('/'):\n  \
+          \                      all_changed_files.append(path)\n                \
+          \    # Gestisci anche il caso in cui l'item sia direttamente una stringa\n\
+          \                    elif isinstance(item, str) and not item.endswith('/'):\n\
+          \                        all_changed_files.append(item)\n\n    # Filtra\
+          \ solo i file nel nostro path di dati\n    files_to_pull = [\n        f\
+          \ for f in all_changed_files \n        if f.startswith(dvc_data_path_in_repo)\n\
           \    ]\n\n    if not files_to_pull:\n        print(\"\u2713 Nessun file\
           \ di dati modificato. La pipeline non processer\xE0 nulla.\")\n        return\n\
           \n    print(f\"File modificati trovati ({len(files_to_pull)}): \\n{files_to_pull}\"\
