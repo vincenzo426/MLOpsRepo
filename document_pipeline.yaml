@@ -324,14 +324,17 @@ deploymentSpec:
           \    # Gestisci anche il caso in cui l'item sia direttamente una stringa\n\
           \                elif isinstance(item, str) and not item.endswith('/'):\n\
           \                    all_changed_files.append(item)\n                  \
-          \  print(f\"  - Aggiunto (stringa): {item}\")\n\n    # Filtra solo i file\
-          \ nel nostro path di dati\n    files_to_pull = [\n        f for f in all_changed_files\
-          \ \n        if f.startswith(dvc_data_path_in_repo)\n    ]\n\n    if not\
-          \ files_to_pull:\n        print(\"\u2713 Nessun file di dati modificato.\
-          \ La pipeline non processer\xE0 nulla.\")\n        return\n\n    print(f\"\
-          File modificati trovati ({len(files_to_pull)}): \\n{files_to_pull}\")\n\n\
-          \    # 5. Scarica *solo* i file modificati\n    print(\"Scaricamento solo\
-          \ dei file modificati...\")\n    # Dobbiamo passare i file .dvc corrispondenti,\
+          \  print(f\"  - Aggiunto (stringa): {item}\")\n\n    # Dopo il loop che\
+          \ popola all_changed_files, aggiungi:\n    print(f\"DEBUG: all_changed_files\
+          \ = {all_changed_files}\")\n\n    files_to_pull = [\n        f for f in\
+          \ all_changed_files \n        if f.startswith(dvc_data_path_in_repo)\n \
+          \   ]\n\n    print(f\"DEBUG: files_to_pull dopo filtraggio = {files_to_pull}\"\
+          )\n    print(f\"DEBUG: dvc_data_path_in_repo = {dvc_data_path_in_repo}\"\
+          )\n\n    if not files_to_pull:\n        print(\"\u2713 Nessun file di dati\
+          \ modificato. La pipeline non processer\xE0 nulla.\")\n        return\n\n\
+          \    print(f\"File modificati trovati ({len(files_to_pull)}): \\n{files_to_pull}\"\
+          )\n\n    # 5. Scarica *solo* i file modificati\n    print(\"Scaricamento\
+          \ solo dei file modificati...\")\n    # Dobbiamo passare i file .dvc corrispondenti,\
           \ non i file raw\n    # Ma `dvc pull` \xE8 abbastanza intelligente da gestire\
           \ i path diretti\n    run_command([\"dvc\", \"pull\", \"--allow-missing\"\
           ] + files_to_pull)\n\n    # 6. Copia *solo* i file modificati nell'Output[Path]\
