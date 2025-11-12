@@ -80,10 +80,26 @@ def upload_pipeline_version_function(client: kfp.Client, pipeline_file: str, pip
 
             # Estrai l'ID della pipeline
             pipeline_id = pipeline.pipeline_id
+
+            if not pipeline_id:
+                raise ValueError(f"Nessuna pipeline trovata con nome: {pipeline_name}")
+
+            # 2. Elenca le versioni della pipeline
+            versions = client.list_pipeline_versions(pipeline_id=pipeline_id)
+
+            if not versions.pipeline_versions:
+                raise ValueError(f"Nessuna versione trovata per la pipeline {pipeline_name}")
+
+            # 3. Seleziona la versione più recente (di solito la default)
+            default_version = sorted(
+                versions.pipeline_versions,
+                key=lambda v: v.create_time or "",
+                reverse=True
+            )[0]
             
             # --- MODIFICA CHIAVE ---
             # Assegna la versione di default al valore di ritorno
-            pipeline_version_to_return = pipeline.default_version.pipeline_version_id
+            pipeline_version_to_return = default_version.pipeline_version_id
             
             print(f"✅ Pipeline creata con successo!")
             print(f"   Pipeline ID: {pipeline_id}")
