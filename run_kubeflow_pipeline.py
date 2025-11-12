@@ -129,7 +129,7 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, ver
     print(f"\n🚀 Avvio run per l'ultima versione di '{pipeline_name}'...")
     
     hf_api_key = os.getenv('HF_API_KEY', '')
-    minio_secret_key = os.getenv('MINIO_SECRET_KEY', 'minio123')
+    minio_secret_key = os.getenv('MINIO_SECRET_KEY', '')
     
     if not hf_api_key:
         print("⚠️  HF_API_KEY non trovata nelle environment variables")
@@ -143,13 +143,21 @@ def run_pipeline(client: kfp.Client, experiment_id: str, pipeline_name: str, ver
         run_name = f"run-{pipeline_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         pipeline_id = client.get_pipeline_id(name=pipeline_name)
         
-        run = client.run_pipeline(
-            experiment_id=experiment_id,
-            job_name=run_name, 
-            pipeline_id=pipeline_id,
-            version_id=version_id,
-            params=arguments
-        )
+        if not version_id:
+            run = client.run_pipeline(
+                experiment_id=experiment_id,
+                job_name=run_name, 
+                pipeline_id=pipeline_id,
+                params=arguments
+            )
+        else:
+            run = client.run_pipeline(
+                experiment_id=experiment_id,
+                job_name=run_name, 
+                pipeline_id=pipeline_id,
+                version_id=version_id,
+                params=arguments
+            )
         
         run_id = getattr(run, 'id', None) or getattr(run, 'run_id', None)
         print(f"✅ Pipeline run avviato!")
