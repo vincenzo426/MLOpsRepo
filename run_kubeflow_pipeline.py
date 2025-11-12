@@ -151,8 +151,7 @@ def main():
     parser.add_argument('--run', action='store_true',
                        help='Esecuzione ultima versione della pipeline')
     parser.add_argument('--endpoint', default=None,
-                       help='Endpoint Kubeflow')
-    
+                       help='Endpoint Kubeflow')s
     # --- NUOVI ARGOMENTI ---
     parser.add_argument('--new_commit_hash', default='main',
                        help='Git commit hash NUOVO (es. github.sha)')
@@ -211,9 +210,9 @@ def main():
                 PIPELINE_NAME, 
                 verision_pipeline,
                 args.git_repo,
-                args.new_commit_hash, # Passa il nuovo hash
-                args.minio_access_key, # Passa la chiave
-                args.minio_secret_key  # Passa il segreto
+                args.new_commit_hash,
+                args.minio_access_key,
+                args.minio_secret_key
             )
         
         print("\n" + "="*60)
