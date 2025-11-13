@@ -43,7 +43,7 @@ components:
             schemaVersion: 0.0.1
       parameters:
         batch_size:
-          defaultValue: 64.0
+          defaultValue: 128.0
           isOptional: true
           parameterType: NUMBER_INTEGER
         hf_api_key:
@@ -190,7 +190,7 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef create_embeddings(\n    chunks: Input[Dataset],\n    model_name:\
           \ str,\n    hf_api_key: str,\n    output_embeddings: Output[Dataset],\n\
-          \    batch_size: int = 64  # Aggiungi un parametro per la dimensione del\
+          \    batch_size: int = 128  # Aggiungi un parametro per la dimensione del\
           \ batch\n):\n    from huggingface_hub import InferenceClient\n    import\
           \ json\n    import os\n\n    client = InferenceClient(token=hf_api_key)\n\
           \n    chunks_file = os.path.join(chunks.path, \"chunks.json\")\n    with\

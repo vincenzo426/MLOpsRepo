@@ -148,7 +148,7 @@ def create_embeddings(
     model_name: str,
     hf_api_key: str,
     output_embeddings: Output[Dataset],
-    batch_size: int = 64  # Aggiungi un parametro per la dimensione del batch
+    batch_size: int = 128  # Aggiungi un parametro per la dimensione del batch
 ):
     from huggingface_hub import InferenceClient
     import json
