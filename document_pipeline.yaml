@@ -106,7 +106,7 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'langchain-community==0.2.10'\
-          \ 'langchain-text-splitters==0.2.2' 'pypdf==4.2.0'  &&  python3 -m pip install\
+          \ 'langchain-text-splitters==0.2.2' 'pypdfium2'  &&  python3 -m pip install\
           \ --quiet --no-warn-script-location 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5;\
           \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
         - sh
@@ -123,28 +123,27 @@ deploymentSpec:
           \ *\n\ndef chunk_documents(\n    documents: Input[Dataset],\n    chunk_size:\
           \ int,\n    chunk_overlap: int,\n    output_chunks: Output[Dataset]\n):\n\
           \    from langchain_text_splitters import RecursiveCharacterTextSplitter\n\
-          \    from langchain_community.document_loaders import PyPDFLoader\n    import\
-          \ os\n    import json\n\n    print(f\"=== Exploring documents path: {documents.path}\
-          \ ===\")\n\n    splitter = RecursiveCharacterTextSplitter(\n        chunk_size=chunk_size,\n\
-          \        chunk_overlap=chunk_overlap,\n        length_function=len\n   \
-          \ )\n\n    all_chunks = []\n\n    for root, dirs, files in os.walk(documents.path):\n\
-          \        for file in files:\n            if file.startswith('.'):\n    \
-          \            continue\n\n            file_path = os.path.join(root, file)\n\
-          \            file_size = os.path.getsize(file_path)\n            print(f\"\
-          Processing: {file} ({file_size} bytes)\")\n\n            try:\n        \
-          \        content = None\n\n                # --- 3. MODIFICA LOGICA DI LETTURA\
-          \ ---\n                if file.lower().endswith('.pdf'):\n             \
-          \       print(f\"  \u2192 Loading as PDF...\")\n                    loader\
-          \ = PyPDFLoader(file_path)\n                    # PyPDFLoader carica ogni\
-          \ pagina come un \"Document\" separato\n                    pdf_pages =\
-          \ loader.load()\n                    # Uniamo il testo di tutte le pagine\n\
-          \                    content = \"\\n\".join([doc.page_content for doc in\
-          \ pdf_pages])\n\n                else:\n                    # Assumiamo\
+          \    from langchain_community.document_loaders import PyPDFium2Loader\n\
+          \    import os\n    import json\n\n    print(f\"=== Exploring documents\
+          \ path: {documents.path} ===\")\n\n    splitter = RecursiveCharacterTextSplitter(\n\
+          \        chunk_size=chunk_size,\n        chunk_overlap=chunk_overlap,\n\
+          \        length_function=len\n    )\n\n    all_chunks = []\n\n    for root,\
+          \ dirs, files in os.walk(documents.path):\n        for file in files:\n\
+          \            if file.startswith('.'):\n                continue\n\n    \
+          \        file_path = os.path.join(root, file)\n            file_size = os.path.getsize(file_path)\n\
+          \            print(f\"Processing: {file} ({file_size} bytes)\")\n\n    \
+          \        try:\n                content = None\n\n                # --- 3.\
+          \ MODIFICA LOGICA DI LETTURA ---\n                if file.lower().endswith('.pdf'):\n\
+          \                    print(f\"  \u2192 Loading as PDF (using PyPDFium2)...\"\
+          )\n                    loader = PyPDFium2Loader(file_path)\n           \
+          \         pdf_pages = loader.load()\n                    # Uniamo il testo\
+          \ di tutte le pagine\n                    content = \"\\n\".join([doc.page_content\
+          \ for doc in pdf_pages])\n                else:\n                    # Assumiamo\
           \ che gli altri file siano di testo\n                    # (logica originale)\n\
           \                    print(f\"  \u2192 Loading as Text...\")\n         \
           \           with open(file_path, 'r', encoding='utf-8', errors='ignore')\
           \ as f:\n                        content = f.read()\n                # ---\
-          \ FINE MODIFICA ---\n\n\n                if content and content.strip():\n\
+          \ FINE MODIFICA ---                \n                if content and content.strip():\n\
           \                    chunks = splitter.split_text(content)\n\n         \
           \           for i, chunk in enumerate(chunks):\n                       \
           \ all_chunks.append({\n                            'source': file,\n   \

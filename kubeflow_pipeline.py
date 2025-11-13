@@ -56,7 +56,7 @@ def download_from_minio(
     packages_to_install=[
         "langchain-community==0.2.10", # Per PyPDFLoader
         "langchain-text-splitters==0.2.2", # Per RecursiveCharacterTextSplitter
-        "pypdf==4.2.0"                 # Per la lettura dei PDF
+        "pypdfium2"                # Per la lettura dei PDF
     ]
 )
 def chunk_documents(
@@ -66,7 +66,7 @@ def chunk_documents(
     output_chunks: Output[Dataset]
 ):
     from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_community.document_loaders import PyPDFium2Loader
     import os
     import json
     
@@ -94,22 +94,18 @@ def chunk_documents(
                 
                 # --- 3. MODIFICA LOGICA DI LETTURA ---
                 if file.lower().endswith('.pdf'):
-                    print(f"  → Loading as PDF...")
-                    loader = PyPDFLoader(file_path)
-                    # PyPDFLoader carica ogni pagina come un "Document" separato
+                    print(f"  → Loading as PDF (using PyPDFium2)...")
+                    loader = PyPDFium2Loader(file_path)
                     pdf_pages = loader.load()
                     # Uniamo il testo di tutte le pagine
                     content = "\n".join([doc.page_content for doc in pdf_pages])
-                
                 else:
                     # Assumiamo che gli altri file siano di testo
                     # (logica originale)
                     print(f"  → Loading as Text...")
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
-                # --- FINE MODIFICA ---
-
-                
+                # --- FINE MODIFICA ---                
                 if content and content.strip():
                     chunks = splitter.split_text(content)
                     
