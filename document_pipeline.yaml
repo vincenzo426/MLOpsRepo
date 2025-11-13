@@ -297,13 +297,13 @@ deploymentSpec:
           \ with_vectors=False\n        )\n        existing_ids.update([record.id\
           \ for record in records])\n        if offset is None:\n            break\n\
           \n    # Identifica chunk obsoleti da eliminare\n    obsolete_ids = existing_ids\
-          \ - new_ids\n\n    if obsolete_ids:\n        print(f\"\U0001F5D1\uFE0F \
-          \ Rimozione {len(obsolete_ids)} chunk obsoleti...\")\n        client.delete(\n\
-          \            collection_name=collection_name,\n            points_selector=list(obsolete_ids)\n\
-          \        )\n        print(f\"\u2713 Chunk obsoleti rimossi\")\n\n    # Upsert\
-          \ nuovi/aggiornati chunk\n    batch_size = 100\n    for i in range(0, len(new_points),\
-          \ batch_size):\n        batch = new_points[i:i+batch_size]\n        client.upsert(\n\
-          \            collection_name=collection_name,\n            points=batch\n\
+          \ - new_ids\n\n    if obsolete_ids:\n        print(f\"Rimozione {len(obsolete_ids)}\
+          \ chunk obsoleti...\")\n        client.delete(\n            collection_name=collection_name,\n\
+          \            points_selector=list(obsolete_ids)\n        )\n        print(f\"\
+          \u2713 Chunk obsoleti rimossi\")\n\n    # Upsert nuovi/aggiornati chunk\n\
+          \    batch_size = 100\n    for i in range(0, len(new_points), batch_size):\n\
+          \        batch = new_points[i:i+batch_size]\n        client.upsert(\n  \
+          \          collection_name=collection_name,\n            points=batch\n\
           \        )\n        print(f\"Uploaded batch {i//batch_size + 1}/{(len(new_points)-1)//batch_size\
           \ + 1}\")\n\n    print(f\"\u2713 Upload completato: {len(new_points)} chunks,\
           \ {len(obsolete_ids)} rimossi\")\n\n"

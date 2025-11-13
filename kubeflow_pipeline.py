@@ -244,7 +244,7 @@ def upload_to_qdrant(
     obsolete_ids = existing_ids - new_ids
     
     if obsolete_ids:
-        print(f"🗑️  Rimozione {len(obsolete_ids)} chunk obsoleti...")
+        print(f"Rimozione {len(obsolete_ids)} chunk obsoleti...")
         client.delete(
             collection_name=collection_name,
             points_selector=list(obsolete_ids)
