@@ -352,4 +352,4 @@ if __name__ == '__main__':
         pipeline_func=document_processing_pipeline,
         package_path='document_pipeline.yaml'
     )
-    print("✓ Pipeline compilata: document_pipeline.yaml")
+    print("✓ Pipeline compilata: document_pipeline.yaml!")
