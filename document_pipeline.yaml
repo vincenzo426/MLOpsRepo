@@ -272,28 +272,41 @@ deploymentSpec:
           \ *\n\ndef upload_to_qdrant(\n    embeddings: Input[Dataset],\n    qdrant_url:\
           \ str,\n    collection_name: str,\n    vector_size: int\n):\n    from qdrant_client\
           \ import QdrantClient\n    from qdrant_client.models import Distance, VectorParams,\
-          \ PointStruct\n    import json\n    import uuid\n    import os\n\n    client\
-          \ = QdrantClient(url=qdrant_url)\n\n    try:\n        client.create_collection(\n\
-          \            collection_name=collection_name,\n            vectors_config=VectorParams(\n\
-          \                size=vector_size,\n                distance=Distance.COSINE\n\
-          \            )\n        )\n        print(f\"Collection '{collection_name}'\
-          \ creata\")\n    except Exception as e:\n        print(f\"Collection gi\xE0\
-          \ esistente o errore: {e}\")\n\n    embeddings_file = os.path.join(embeddings.path,\
-          \ \"embeddings.json\")\n    with open(embeddings_file, 'r', encoding='utf-8')\
-          \ as f:\n        embedded_chunks = json.load(f)\n\n    points = []\n\n \
-          \   import hashlib\n\n    for chunk in embedded_chunks:\n    # Genera ID\
-          \ deterministico\n        chunk_identifier = f\"{chunk['source']}_{chunk['chunk_id']}\"\
+          \ PointStruct\n    import json\n    import hashlib\n    import os\n\n  \
+          \  client = QdrantClient(url=qdrant_url)\n\n    # Crea collection se non\
+          \ esiste\n    try:\n        client.create_collection(\n            collection_name=collection_name,\n\
+          \            vectors_config=VectorParams(\n                size=vector_size,\n\
+          \                distance=Distance.COSINE\n            )\n        )\n  \
+          \      print(f\"Collection '{collection_name}' creata\")\n    except Exception\
+          \ as e:\n        print(f\"Collection gi\xE0 esistente: {e}\")\n\n    # Carica\
+          \ embeddings\n    embeddings_file = os.path.join(embeddings.path, \"embeddings.json\"\
+          )\n    with open(embeddings_file, 'r', encoding='utf-8') as f:\n       \
+          \ embedded_chunks = json.load(f)\n\n    # Genera ID deterministici per i\
+          \ nuovi chunk\n    new_points = []\n    new_ids = set()\n\n    for chunk\
+          \ in embedded_chunks:\n        chunk_identifier = f\"{chunk['source']}_{chunk['chunk_id']}\"\
           \n        chunk_id = hashlib.md5(chunk_identifier.encode()).hexdigest()\n\
-          \n    point = PointStruct(\n        id=chunk_id,  # <-- ID deterministico\
-          \ invece di UUID\n        vector=chunk['embedding'],\n        payload={\n\
-          \            'source': chunk['source'],\n            'chunk_id': chunk['chunk_id'],\n\
-          \            'content': chunk['content']\n        }\n    )\n    points.append(point)\n\
-          \n    batch_size = 100\n    for i in range(0, len(points), batch_size):\n\
-          \        batch = points[i:i+batch_size]\n        client.upsert(\n      \
-          \      collection_name=collection_name,\n            points=batch\n    \
-          \    )\n        print(f\"Uploaded batch {i//batch_size + 1}/{(len(points)-1)//batch_size\
-          \ + 1}\")\n\n    print(f\"\u2713 Uploaded {len(points)} points to Qdrant\
-          \ collection '{collection_name}'\")\n\n"
+          \        new_ids.add(chunk_id)\n\n        point = PointStruct(\n       \
+          \     id=chunk_id,\n            vector=chunk['embedding'],\n           \
+          \ payload={\n                'source': chunk['source'],\n              \
+          \  'chunk_id': chunk['chunk_id'],\n                'content': chunk['content']\n\
+          \            }\n        )\n        new_points.append(point)\n\n    # Recupera\
+          \ tutti gli ID esistenti in Qdrant\n    existing_ids = set()\n    offset\
+          \ = None\n    while True:\n        records, offset = client.scroll(\n  \
+          \          collection_name=collection_name,\n            limit=100,\n  \
+          \          offset=offset,\n            with_payload=False,\n           \
+          \ with_vectors=False\n        )\n        existing_ids.update([record.id\
+          \ for record in records])\n        if offset is None:\n            break\n\
+          \n    # Identifica chunk obsoleti da eliminare\n    obsolete_ids = existing_ids\
+          \ - new_ids\n\n    if obsolete_ids:\n        print(f\"\U0001F5D1\uFE0F \
+          \ Rimozione {len(obsolete_ids)} chunk obsoleti...\")\n        client.delete(\n\
+          \            collection_name=collection_name,\n            points_selector=list(obsolete_ids)\n\
+          \        )\n        print(f\"\u2713 Chunk obsoleti rimossi\")\n\n    # Upsert\
+          \ nuovi/aggiornati chunk\n    batch_size = 100\n    for i in range(0, len(new_points),\
+          \ batch_size):\n        batch = new_points[i:i+batch_size]\n        client.upsert(\n\
+          \            collection_name=collection_name,\n            points=batch\n\
+          \        )\n        print(f\"Uploaded batch {i//batch_size + 1}/{(len(new_points)-1)//batch_size\
+          \ + 1}\")\n\n    print(f\"\u2713 Upload completato: {len(new_points)} chunks,\
+          \ {len(obsolete_ids)} rimossi\")\n\n"
         image: python:3.10
 pipelineInfo:
   description: Pipeline per processare documenti da MinIO a Qdrant con LangChain

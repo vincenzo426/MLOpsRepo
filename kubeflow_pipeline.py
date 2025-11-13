@@ -182,11 +182,12 @@ def upload_to_qdrant(
     from qdrant_client import QdrantClient
     from qdrant_client.models import Distance, VectorParams, PointStruct
     import json
-    import uuid
+    import hashlib
     import os
     
     client = QdrantClient(url=qdrant_url)
     
+    # Crea collection se non esiste
     try:
         client.create_collection(
             collection_name=collection_name,
@@ -197,43 +198,70 @@ def upload_to_qdrant(
         )
         print(f"Collection '{collection_name}' creata")
     except Exception as e:
-        print(f"Collection già esistente o errore: {e}")
+        print(f"Collection già esistente: {e}")
     
+    # Carica embeddings
     embeddings_file = os.path.join(embeddings.path, "embeddings.json")
     with open(embeddings_file, 'r', encoding='utf-8') as f:
         embedded_chunks = json.load(f)
     
-    points = []
+    # Genera ID deterministici per i nuovi chunk
+    new_points = []
+    new_ids = set()
     
-    import hashlib
-
     for chunk in embedded_chunks:
-    # Genera ID deterministico
         chunk_identifier = f"{chunk['source']}_{chunk['chunk_id']}"
         chunk_id = hashlib.md5(chunk_identifier.encode()).hexdigest()
+        new_ids.add(chunk_id)
+        
+        point = PointStruct(
+            id=chunk_id,
+            vector=chunk['embedding'],
+            payload={
+                'source': chunk['source'],
+                'chunk_id': chunk['chunk_id'],
+                'content': chunk['content']
+            }
+        )
+        new_points.append(point)
     
-    point = PointStruct(
-        id=chunk_id,  # <-- ID deterministico invece di UUID
-        vector=chunk['embedding'],
-        payload={
-            'source': chunk['source'],
-            'chunk_id': chunk['chunk_id'],
-            'content': chunk['content']
-        }
-    )
-    points.append(point)
+    # Recupera tutti gli ID esistenti in Qdrant
+    existing_ids = set()
+    offset = None
+    while True:
+        records, offset = client.scroll(
+            collection_name=collection_name,
+            limit=100,
+            offset=offset,
+            with_payload=False,
+            with_vectors=False
+        )
+        existing_ids.update([record.id for record in records])
+        if offset is None:
+            break
     
+    # Identifica chunk obsoleti da eliminare
+    obsolete_ids = existing_ids - new_ids
+    
+    if obsolete_ids:
+        print(f"🗑️  Rimozione {len(obsolete_ids)} chunk obsoleti...")
+        client.delete(
+            collection_name=collection_name,
+            points_selector=list(obsolete_ids)
+        )
+        print(f"✓ Chunk obsoleti rimossi")
+    
+    # Upsert nuovi/aggiornati chunk
     batch_size = 100
-    for i in range(0, len(points), batch_size):
-        batch = points[i:i+batch_size]
+    for i in range(0, len(new_points), batch_size):
+        batch = new_points[i:i+batch_size]
         client.upsert(
             collection_name=collection_name,
             points=batch
         )
-        print(f"Uploaded batch {i//batch_size + 1}/{(len(points)-1)//batch_size + 1}")
+        print(f"Uploaded batch {i//batch_size + 1}/{(len(new_points)-1)//batch_size + 1}")
     
-    print(f"✓ Uploaded {len(points)} points to Qdrant collection '{collection_name}'")
-
+    print(f"✓ Upload completato: {len(new_points)} chunks, {len(obsolete_ids)} rimossi")
 
 @dsl.pipeline(
     name='Document Processing Pipeline',
