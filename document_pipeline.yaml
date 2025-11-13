@@ -106,9 +106,10 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'langchain==0.3.0'\
-          \ 'langchain-text-splitters==0.3.0'  &&  python3 -m pip install --quiet\
-          \ --no-warn-script-location 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5;\
-          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+          \ 'langchain-text-splitters==0.3.0' 'langchain-community==0.2.10' 'pypdf==4.2.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -123,29 +124,42 @@ deploymentSpec:
           \ *\n\ndef chunk_documents(\n    documents: Input[Dataset],\n    chunk_size:\
           \ int,\n    chunk_overlap: int,\n    output_chunks: Output[Dataset]\n):\n\
           \    from langchain_text_splitters import RecursiveCharacterTextSplitter\n\
-          \    import os\n    import json\n\n    print(f\"=== Exploring documents\
-          \ path: {documents.path} ===\")\n\n    splitter = RecursiveCharacterTextSplitter(\n\
+          \    # --- 2. MODIFICA IMPORT ---\n    from langchain_community.document_loaders\
+          \ import PyPDFLoader\n    import os\n    import json\n\n    print(f\"===\
+          \ Exploring documents path: {documents.path} ===\")\n\n    splitter = RecursiveCharacterTextSplitter(\n\
           \        chunk_size=chunk_size,\n        chunk_overlap=chunk_overlap,\n\
           \        length_function=len\n    )\n\n    all_chunks = []\n\n    for root,\
           \ dirs, files in os.walk(documents.path):\n        for file in files:\n\
           \            if file.startswith('.'):\n                continue\n\n    \
           \        file_path = os.path.join(root, file)\n            file_size = os.path.getsize(file_path)\n\
           \            print(f\"Processing: {file} ({file_size} bytes)\")\n\n    \
-          \        try:\n                with open(file_path, 'r', encoding='utf-8',\
-          \ errors='ignore') as f:\n                    content = f.read()\n\n   \
-          \             if content.strip():\n                    chunks = splitter.split_text(content)\n\
-          \n                    for i, chunk in enumerate(chunks):\n             \
-          \           all_chunks.append({\n                            'source': file,\n\
-          \                            'chunk_id': i,\n                          \
-          \  'content': chunk\n                        })\n                    print(f\"\
-          \  \u2192 Created {len(chunks)} chunks\")\n                else:\n     \
-          \               print(f\"  \u2192 Empty file, skipped\")\n\n           \
-          \ except Exception as e:\n                print(f\"  \u2192 Error: {e}\"\
-          )\n\n    os.makedirs(output_chunks.path, exist_ok=True)\n    output_file\
-          \ = os.path.join(output_chunks.path, \"chunks.json\")\n    with open(output_file,\
-          \ 'w', encoding='utf-8') as f:\n        json.dump(all_chunks, f, ensure_ascii=False)\n\
-          \n    output_chunks.metadata[\"chunk_count\"] = len(all_chunks)\n    print(f\"\
-          \\n\u2713 Total chunks created: {len(all_chunks)}\")\n\n"
+          \        try:\n                content = None\n\n                # --- 3.\
+          \ MODIFICA LOGICA DI LETTURA ---\n                if file.lower().endswith('.pdf'):\n\
+          \                    print(f\"  \u2192 Loading as PDF...\")\n          \
+          \          loader = PyPDFLoader(file_path)\n                    # PyPDFLoader\
+          \ carica ogni pagina come un \"Document\" separato\n                   \
+          \ pdf_pages = loader.load()\n                    # Uniamo il testo di tutte\
+          \ le pagine\n                    content = \"\\n\".join([doc.page_content\
+          \ for doc in pdf_pages])\n\n                else:\n                    #\
+          \ Assumiamo che gli altri file siano di testo\n                    # (logica\
+          \ originale)\n                    print(f\"  \u2192 Loading as Text...\"\
+          )\n                    with open(file_path, 'r', encoding='utf-8', errors='ignore')\
+          \ as f:\n                        content = f.read()\n                # ---\
+          \ FINE MODIFICA ---\n\n\n                if content and content.strip():\n\
+          \                    chunks = splitter.split_text(content)\n\n         \
+          \           for i, chunk in enumerate(chunks):\n                       \
+          \ all_chunks.append({\n                            'source': file,\n   \
+          \                         'chunk_id': i,\n                            'content':\
+          \ chunk\n                        })\n                    print(f\"  \u2192\
+          \ Created {len(chunks)} chunks\")\n                else:\n             \
+          \       print(f\"  \u2192 Empty file or no content, skipped\")\n\n     \
+          \       except Exception as e:\n                print(f\"  \u2192 Error\
+          \ processing {file}: {e}\")\n\n    os.makedirs(output_chunks.path, exist_ok=True)\n\
+          \    output_file = os.path.join(output_chunks.path, \"chunks.json\")\n \
+          \   with open(output_file, 'w', encoding='utf-8') as f:\n        json.dump(all_chunks,\
+          \ f, ensure_ascii=False)\n\n    output_chunks.metadata[\"chunk_count\"]\
+          \ = len(all_chunks)\n    print(f\"\\n\u2713 Total chunks created: {len(all_chunks)}\"\
+          )\n\n"
         image: python:3.10
     exec-create-embeddings:
       container:

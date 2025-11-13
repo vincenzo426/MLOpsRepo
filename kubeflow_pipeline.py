@@ -51,9 +51,13 @@ def download_from_minio(
 
 @dsl.component(
     base_image="python:3.10",
+    # --- 1. MODIFICA DIPENDENZE ---
+    # Aggiungiamo 'langchain-community' e 'pypdf'
     packages_to_install=[
         "langchain==0.3.0",
-        "langchain-text-splitters==0.3.0"
+        "langchain-text-splitters==0.3.0",
+        "langchain-community==0.2.10", # Contiene i loaders
+        "pypdf==4.2.0"                  # La libreria per leggere i PDF
     ]
 )
 def chunk_documents(
@@ -63,6 +67,8 @@ def chunk_documents(
     output_chunks: Output[Dataset]
 ):
     from langchain_text_splitters import RecursiveCharacterTextSplitter
+    # --- 2. MODIFICA IMPORT ---
+    from langchain_community.document_loaders import PyPDFLoader
     import os
     import json
     
@@ -86,10 +92,27 @@ def chunk_documents(
             print(f"Processing: {file} ({file_size} bytes)")
             
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
+                content = None
                 
-                if content.strip():
+                # --- 3. MODIFICA LOGICA DI LETTURA ---
+                if file.lower().endswith('.pdf'):
+                    print(f"  → Loading as PDF...")
+                    loader = PyPDFLoader(file_path)
+                    # PyPDFLoader carica ogni pagina come un "Document" separato
+                    pdf_pages = loader.load()
+                    # Uniamo il testo di tutte le pagine
+                    content = "\n".join([doc.page_content for doc in pdf_pages])
+                
+                else:
+                    # Assumiamo che gli altri file siano di testo
+                    # (logica originale)
+                    print(f"  → Loading as Text...")
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                # --- FINE MODIFICA ---
+
+                
+                if content and content.strip():
                     chunks = splitter.split_text(content)
                     
                     for i, chunk in enumerate(chunks):
@@ -100,10 +123,10 @@ def chunk_documents(
                         })
                     print(f"  → Created {len(chunks)} chunks")
                 else:
-                    print(f"  → Empty file, skipped")
+                    print(f"  → Empty file or no content, skipped")
                     
             except Exception as e:
-                print(f"  → Error: {e}")
+                print(f"  → Error processing {file}: {e}")
     
     os.makedirs(output_chunks.path, exist_ok=True)
     output_file = os.path.join(output_chunks.path, "chunks.json")
@@ -112,7 +135,6 @@ def chunk_documents(
     
     output_chunks.metadata["chunk_count"] = len(all_chunks)
     print(f"\n✓ Total chunks created: {len(all_chunks)}")
-
 
 @dsl.component(
     base_image="python:3.10",
