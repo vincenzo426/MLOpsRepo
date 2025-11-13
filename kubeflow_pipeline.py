@@ -54,7 +54,6 @@ def download_from_minio(
     # --- 1. MODIFICA DIPENDENZE ---
     # Aggiungiamo 'langchain-community' e 'pypdf'
     packages_to_install=[
-        "langchain-core==0.2.15",       # Necessario per far funzionare gli altri
         "langchain-community==0.2.10", # Per PyPDFLoader
         "langchain-text-splitters==0.2.2", # Per RecursiveCharacterTextSplitter
         "pypdf==4.2.0"                 # Per la lettura dei PDF
