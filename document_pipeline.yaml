@@ -42,6 +42,10 @@ components:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
       parameters:
+        batch_size:
+          defaultValue: 64.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
         hf_api_key:
           parameterType: STRING
         model_name:
@@ -171,27 +175,43 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef create_embeddings(\n    chunks: Input[Dataset],\n    model_name:\
-          \ str,\n    hf_api_key: str,\n    output_embeddings: Output[Dataset]\n):\n\
-          \    from huggingface_hub import InferenceClient\n    import json\n    import\
-          \ os\n\n    client = InferenceClient(token=hf_api_key)\n\n    chunks_file\
-          \ = os.path.join(chunks.path, \"chunks.json\")\n    with open(chunks_file,\
-          \ 'r', encoding='utf-8') as f:\n        chunks_data = json.load(f)\n\n \
-          \   embedded_chunks = []\n\n    print(f\"Generazione embeddings per {len(chunks_data)}\
-          \ chunks con {model_name}...\")\n\n    for i, chunk in enumerate(chunks_data):\n\
-          \        embedding = client.feature_extraction(\n            text=chunk['content'],\n\
-          \            model=model_name\n        )\n\n        if hasattr(embedding,\
-          \ 'tolist'):\n            embedding = embedding.tolist()\n        elif isinstance(embedding,\
-          \ list) and len(embedding) > 0 and hasattr(embedding[0], 'tolist'):\n  \
-          \          embedding = [e.tolist() if hasattr(e, 'tolist') else e for e\
-          \ in embedding][0]\n\n        embedded_chunks.append({\n            **chunk,\n\
-          \            'embedding': embedding\n        })\n\n        if (i + 1) %\
-          \ 10 == 0:\n            print(f\"Processati {i + 1}/{len(chunks_data)} chunks\"\
-          )\n\n    os.makedirs(output_embeddings.path, exist_ok=True)\n    output_file\
-          \ = os.path.join(output_embeddings.path, \"embeddings.json\")\n    with\
-          \ open(output_file, 'w', encoding='utf-8') as f:\n        json.dump(embedded_chunks,\
-          \ f, ensure_ascii=False)\n\n    output_embeddings.metadata[\"embedding_count\"\
-          ] = len(embedded_chunks)\n    print(f\"\u2713 Embeddings completati: {len(embedded_chunks)}\
-          \ chunks\")\n\n"
+          \ str,\n    hf_api_key: str,\n    output_embeddings: Output[Dataset],\n\
+          \    batch_size: int = 64  # Aggiungi un parametro per la dimensione del\
+          \ batch\n):\n    from huggingface_hub import InferenceClient\n    import\
+          \ json\n    import os\n\n    client = InferenceClient(token=hf_api_key)\n\
+          \n    chunks_file = os.path.join(chunks.path, \"chunks.json\")\n    with\
+          \ open(chunks_file, 'r', encoding='utf-8') as f:\n        chunks_data =\
+          \ json.load(f)\n\n    embedded_chunks = []\n\n    print(f\"Generazione embeddings\
+          \ per {len(chunks_data)} chunks con {model_name}...\")\n\n    # Raccogli\
+          \ solo i testi per il batching\n    all_texts = [chunk['content'] for chunk\
+          \ in chunks_data]\n\n    # Lista per raccogliere tutti gli embedding calcolati\n\
+          \    all_embeddings = []\n\n    for i in range(0, len(all_texts), batch_size):\n\
+          \        # 1. Crea un batch di testi\n        batch_texts = all_texts[i:i\
+          \ + batch_size]\n\n        # 2. Esegui UNA chiamata API per l'INTERO batch\n\
+          \        try:\n            batch_embeddings = client.feature_extraction(\n\
+          \                text=batch_texts,  # <-- SOLUZIONE: invia una lista di\
+          \ testi\n                model=model_name\n            )\n\n           \
+          \ # Gestione della struttura di output\n            if isinstance(batch_embeddings,\
+          \ list):\n                all_embeddings.extend([e.tolist() if hasattr(e,\
+          \ 'tolist') else e for e in batch_embeddings])\n            else:\n    \
+          \            # Se l'output \xE8 un singolo tensore/array per il batch\n\
+          \                all_embeddings.extend([e.to_list() if hasattr(e, 'tolist')\
+          \ else e for e in batch_embeddings])\n\n            print(f\"Processato\
+          \ batch {i//batch_size + 1}/{(len(all_texts) - 1)//batch_size + 1}\")\n\n\
+          \        except Exception as e:\n            print(f\"Errore durante l'elaborazione\
+          \ del batch {i}: {e}\")\n            # Aggiungi N embedding vuoti o gestisci\
+          \ l'errore\n            all_embeddings.extend([None] * len(batch_texts))\n\
+          \n    # 3. Ricombina i metadati con gli embedding\n    for i, chunk in enumerate(chunks_data):\n\
+          \        embedding_value = all_embeddings[i]\n        # Salta i chunk che\
+          \ hanno fallito (se ce ne sono)\n        if embedding_value is not None:\n\
+          \            embedded_chunks.append({\n                **chunk,\n      \
+          \          'embedding': embedding_value\n            })\n\n    os.makedirs(output_embeddings.path,\
+          \ exist_ok=True)\n    output_file = os.path.join(output_embeddings.path,\
+          \ \"embeddings.json\")\n    with open(output_file, 'w', encoding='utf-8')\
+          \ as f:\n        json.dump(embedded_chunks, f, ensure_ascii=False)\n\n \
+          \   output_embeddings.metadata[\"embedding_count\"] = len(embedded_chunks)\n\
+          \    print(f\"\u2713 Embeddings completati: {len(embedded_chunks)} chunks\"\
+          )\n\n"
         image: python:3.10
     exec-download-from-minio:
       container:

@@ -125,46 +125,69 @@ def create_embeddings(
     chunks: Input[Dataset],
     model_name: str,
     hf_api_key: str,
-    output_embeddings: Output[Dataset]
+    output_embeddings: Output[Dataset],
+    batch_size: int = 64  # Aggiungi un parametro per la dimensione del batch
 ):
     from huggingface_hub import InferenceClient
     import json
     import os
-    
+
     client = InferenceClient(token=hf_api_key)
-    
+
     chunks_file = os.path.join(chunks.path, "chunks.json")
     with open(chunks_file, 'r', encoding='utf-8') as f:
         chunks_data = json.load(f)
-    
+
     embedded_chunks = []
     
     print(f"Generazione embeddings per {len(chunks_data)} chunks con {model_name}...")
+
+    # Raccogli solo i testi per il batching
+    all_texts = [chunk['content'] for chunk in chunks_data]
     
+    # Lista per raccogliere tutti gli embedding calcolati
+    all_embeddings = []
+
+    for i in range(0, len(all_texts), batch_size):
+        # 1. Crea un batch di testi
+        batch_texts = all_texts[i:i + batch_size]
+        
+        # 2. Esegui UNA chiamata API per l'INTERO batch
+        try:
+            batch_embeddings = client.feature_extraction(
+                text=batch_texts,  # <-- SOLUZIONE: invia una lista di testi
+                model=model_name
+            )
+            
+            # Gestione della struttura di output
+            if isinstance(batch_embeddings, list):
+                all_embeddings.extend([e.tolist() if hasattr(e, 'tolist') else e for e in batch_embeddings])
+            else:
+                # Se l'output è un singolo tensore/array per il batch
+                all_embeddings.extend([e.to_list() if hasattr(e, 'tolist') else e for e in batch_embeddings])
+
+            print(f"Processato batch {i//batch_size + 1}/{(len(all_texts) - 1)//batch_size + 1}")
+
+        except Exception as e:
+            print(f"Errore durante l'elaborazione del batch {i}: {e}")
+            # Aggiungi N embedding vuoti o gestisci l'errore
+            all_embeddings.extend([None] * len(batch_texts))
+
+    # 3. Ricombina i metadati con gli embedding
     for i, chunk in enumerate(chunks_data):
-        embedding = client.feature_extraction(
-            text=chunk['content'],
-            model=model_name
-        )
-        
-        if hasattr(embedding, 'tolist'):
-            embedding = embedding.tolist()
-        elif isinstance(embedding, list) and len(embedding) > 0 and hasattr(embedding[0], 'tolist'):
-            embedding = [e.tolist() if hasattr(e, 'tolist') else e for e in embedding][0]
-        
-        embedded_chunks.append({
-            **chunk,
-            'embedding': embedding
-        })
-        
-        if (i + 1) % 10 == 0:
-            print(f"Processati {i + 1}/{len(chunks_data)} chunks")
-    
+        embedding_value = all_embeddings[i]
+        # Salta i chunk che hanno fallito (se ce ne sono)
+        if embedding_value is not None:
+            embedded_chunks.append({
+                **chunk,
+                'embedding': embedding_value
+            })
+
     os.makedirs(output_embeddings.path, exist_ok=True)
     output_file = os.path.join(output_embeddings.path, "embeddings.json")
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(embedded_chunks, f, ensure_ascii=False)
-    
+
     output_embeddings.metadata["embedding_count"] = len(embedded_chunks)
     print(f"✓ Embeddings completati: {len(embedded_chunks)} chunks")
 
