@@ -164,7 +164,7 @@ def create_embeddings(
                 all_embeddings.extend([e.tolist() if hasattr(e, 'tolist') else e for e in batch_embeddings])
             else:
                 # Se l'output è un singolo tensore/array per il batch
-                all_embeddings.extend([e.to_list() if hasattr(e, 'tolist') else e for e in batch_embeddings])
+                all_embeddings.extend([e.tolist() if hasattr(e, 'tolist') else e for e in batch_embeddings])
 
             print(f"Processato batch {i//batch_size + 1}/{(len(all_texts) - 1)//batch_size + 1}")
 

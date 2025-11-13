@@ -195,7 +195,7 @@ deploymentSpec:
           \ list):\n                all_embeddings.extend([e.tolist() if hasattr(e,\
           \ 'tolist') else e for e in batch_embeddings])\n            else:\n    \
           \            # Se l'output \xE8 un singolo tensore/array per il batch\n\
-          \                all_embeddings.extend([e.to_list() if hasattr(e, 'tolist')\
+          \                all_embeddings.extend([e.tolist() if hasattr(e, 'tolist')\
           \ else e for e in batch_embeddings])\n\n            print(f\"Processato\
           \ batch {i//batch_size + 1}/{(len(all_texts) - 1)//batch_size + 1}\")\n\n\
           \        except Exception as e:\n            print(f\"Errore durante l'elaborazione\
