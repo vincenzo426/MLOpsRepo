@@ -63,7 +63,7 @@ jobs:
           git add document_pipeline.yaml
           git commit -m "Auto-update compiled pipeline from kubeflow_pipeline.py changes"
           git push
-          
+
       # Configura DVC (serve per scenari 2 e 3)
       - name: Configure DVC
         if: steps.check_files.outputs.data_changed == 'true'
@@ -105,3 +105,11 @@ jobs:
           
           echo "Azione: Upload e Run della versione appena compilata..."
           python run_kubeflow_pipeline.py --upload --run
+      - name: Commit and Push Compiled Pipeline (Code and Data Change)
+        if: steps.check_files.outputs.pipeline_changed == 'true' && steps.check_files.outputs.data_changed == 'true'
+        run: |
+          git config --global user.name "vincenzo426"
+          git config --global user.email "c3nzosalv3mini@gmail.com"
+          git add document_pipeline.yaml
+          git commit -m "Auto-update compiled pipeline from code and data changes"
+          git push
