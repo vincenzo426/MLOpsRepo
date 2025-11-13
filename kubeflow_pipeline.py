@@ -54,10 +54,10 @@ def download_from_minio(
     # --- 1. MODIFICA DIPENDENZE ---
     # Aggiungiamo 'langchain-community' e 'pypdf'
     packages_to_install=[
-        "langchain==0.3.0",
-        "langchain-text-splitters==0.3.0",
-        "langchain-community==0.2.10", # Contiene i loaders
-        "pypdf==4.2.0"                  # La libreria per leggere i PDF
+        "langchain-core==0.2.15",       # Necessario per far funzionare gli altri
+        "langchain-community==0.2.10", # Per PyPDFLoader
+        "langchain-text-splitters==0.2.2", # Per RecursiveCharacterTextSplitter
+        "pypdf==4.2.0"                 # Per la lettura dei PDF
     ]
 )
 def chunk_documents(
@@ -67,7 +67,6 @@ def chunk_documents(
     output_chunks: Output[Dataset]
 ):
     from langchain_text_splitters import RecursiveCharacterTextSplitter
-    # --- 2. MODIFICA IMPORT ---
     from langchain_community.document_loaders import PyPDFLoader
     import os
     import json
