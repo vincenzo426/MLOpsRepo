@@ -20,5 +20,6 @@ k8s
 
 #CI/CD Hosted runners
 actions-runner
-
+all-MiniLM-L6-v2-model
 minikube-network.sh
+kserve

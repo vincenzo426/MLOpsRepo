@@ -8,7 +8,6 @@ MINIKUBE_CPUS = 6
 MINIKUBE_MEMORY = 12288
 MINIKUBE_DISK = 50g
 
-
 help:
 	@echo "Comandi disponibili:"
 	@echo "  make init          - Inizializza DVC e crea struttura directories"
