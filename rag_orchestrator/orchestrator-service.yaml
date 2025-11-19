@@ -1,0 +1,47 @@
+#
+# orchestrator-service.yaml
+#
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "rag-orchestrator"
+  namespace: "kubeflow-user-example-com"
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        image: registry.kube-system.svc.cluster.local/rag-orchestrator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        env:
+          # URL del servizio di embedding creato nella Parte 1
+          # Sintassi KServe interna: http://<nome-isvc>.<namespace>.svc.cluster.local/v1/models/<nome-isvc>:predict
+          - name: EMBEDDING_SERVICE_URL
+            value: "http://embedding-service.kubeflow-user-example-com.svc.cluster.local/v1/models/embedding-model:predict"
+            
+          # URL di Qdrant (Assumiamo sia nel cluster come Service 'qdrant')
+          # Se usi Qdrant fuori dal cluster, usa host.minikube.internal
+          - name: QDRANT_URL
+            value: "http://qdrant:6333" 
+            
+          # La tua chiave Hugging Face
+          - name: HF_API_KEY
+            value: "" 
+            
+        readinessProbe:
+          httpGet:
+            path: /docs # FastAPI espone /docs automaticamente
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+        # --- MODIFICA CRUCIALE: RISORSE RIDOTTE ---
+        resources:
+          requests:
+            cpu: "100m"       # 0.1 CPU
+            memory: "256Mi"   # 256 MB (Minimo per partire)
+          limits:
+            cpu: "1"          # Fino a 1 CPU se serve
+            memory: "512Mi"   # Massimo 512 MB (Più che sufficiente per un'API)

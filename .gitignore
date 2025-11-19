@@ -23,5 +23,5 @@ actions-runner
 all-MiniLM-L6-v2-model
 minikube-network.sh
 kserve
-rag_orchestrator/orchestrator-service.yaml
+#rag_orchestrator/orchestrator-service.yaml
 rag_orchestrator/allow-internal-traffic.yaml
