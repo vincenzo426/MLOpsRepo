@@ -1,0 +1,16 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-internal-embedding-call
+  namespace: kubeflow-user-example-com
+spec:
+  # Seleziona il workload di destinazione (il pod dell'embedding service)
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: embedding-service
+  action: ALLOW
+  rules:
+  - from:
+    # Permette il traffico proveniente dallo stesso namespace (traffico interno)
+    - source:
+        principals: ["cluster.local/ns/kubeflow-user-example-com/sa/default"]
