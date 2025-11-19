@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+requests
+qdrant-client==1.7.0
+huggingface_hub
+python-dotenv

@@ -1,0 +1,14 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: embedding-service
+  namespace: kubeflow-user-example-com
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        image: registry.kube-system.svc.cluster.local/embedding-predictor:v2
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8081
+            protocol: TCP
