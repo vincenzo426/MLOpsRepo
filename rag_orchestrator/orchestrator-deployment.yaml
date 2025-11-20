@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-orchestrator
+  namespace: kubeflow-user-example-com
+  labels:
+    app: rag-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-orchestrator
+  template:
+    metadata:
+      labels:
+        app: rag-orchestrator
+        # Questa label dice a Istio di iniettare il sidecar (standard in Kubeflow)
+        sidecar.istio.io/inject: "true"
+    spec:
+      containers:
+      - name: orchestrator
+        # Immagine presa dal tuo vecchio file
+        image: registry.kube-system.svc.cluster.local/rag-orchestrator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http-api
+        env:
+          # URL che punta al servizio KServe dell'embedding (che NON tocchiamo)
+          - name: EMBEDDING_SERVICE_URL
+            value: "http://embedding-service.kubeflow-user-example-com.svc.cluster.local/v1/models/embedding-model:predict"
+          # URL di Qdrant
+          - name: QDRANT_URL
+            value: "http://qdrant:6333"
+          # Chiave HF (lascia vuota se usi il default o inseriscila qui)
+          - name: HF_API_KEY
+            value: "" 
+          - name: COLLECTION_NAME
+            value: "documents"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-orchestrator-service
+  namespace: kubeflow-user-example-com
+spec:
+  selector:
+    app: rag-orchestrator
+  ports:
+    - protocol: TCP
+      port: 80        # Porta su cui chiamerai il servizio
+      targetPort: 8080 # Porta interna del container FastAPI
+  type: ClusterIP

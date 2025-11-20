@@ -10,5 +10,5 @@ spec:
         image: registry.kube-system.svc.cluster.local/embedding-predictor:v2
         imagePullPolicy: IfNotPresent
         ports:
-          - containerPort: 8081
+          - containerPort: 8080
             protocol: TCP
